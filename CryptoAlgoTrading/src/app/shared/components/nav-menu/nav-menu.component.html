@@ -1,0 +1,103 @@
+<nav class="navbar">
+  <div class="nav-container">
+    <div class="nav-brand">
+      <span class="brand-icon">💳</span>
+      <span class="brand-text">Algo Trading</span>
+    </div>
+
+    <!-- Hamburger Menu Button -->
+    <button class="menu-toggle" (click)="toggleMenu()" [attr.aria-label]="isMenuOpen ? 'Close menu' : 'Open menu'">
+      <span class="hamburger" [class.active]="isMenuOpen">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </button>
+
+    <!-- Dropdown Menu -->
+    <div class="menu-dropdown" [class.active]="isMenuOpen">
+      <ul class="nav-menu">
+        <li class="nav-item">
+          <a 
+            routerLink="/scanner" 
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="nav-link"
+            (click)="closeMenu()"
+          >
+            <span class="nav-icon">🔍</span>
+            <span class="nav-text">Scanner</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a 
+            routerLink="/positions" 
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="nav-link"
+            (click)="closeMenu()"
+          >
+            <span class="nav-icon">📊</span>
+            <span class="nav-text">Positions</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a 
+            routerLink="/pnl" 
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="nav-link"
+            (click)="closeMenu()"
+          >
+            <span class="nav-icon">📈</span>
+            <span class="nav-text">P&L Analysis</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a 
+            routerLink="/settings" 
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="nav-link"
+            (click)="closeMenu()"
+          >
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-text">Settings</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a 
+            routerLink="/config" 
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="nav-link"
+            (click)="closeMenu()"
+          >
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-text">Configuration</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a 
+            routerLink="/debug" 
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            class="nav-link"
+            (click)="closeMenu()"
+          >
+            <span class="nav-icon">🔧</span>
+            <span class="nav-text">Debug</span>
+          </a>
+        </li>
+        <li class="nav-item theme-item">
+          <button class="theme-toggle" (click)="toggleTheme()" [title]="isDarkTheme ? 'Switch to Light Mode' : 'Switch to Dark Mode'">
+            {{ isDarkTheme ? '☀️' : '🌙' }}
+          </button>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Overlay to close menu on click outside -->
+  <div class="menu-overlay" *ngIf="isMenuOpen" (click)="closeMenu()"></div>
+</nav>

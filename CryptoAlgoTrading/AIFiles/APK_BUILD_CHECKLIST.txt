@@ -1,0 +1,191 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║              ANDROID APK BUILD CHECKLIST - Crypto Currency Scanner            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+PRE-BUILD REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Android Device/Emulator connected via USB
+  └─ Check: adb devices
+
+☐ USB Debugging enabled on device
+  └─ Settings → Developer Options → USB Debugging ✓
+
+☐ PowerShell opened as Administrator
+  └─ Right-click PowerShell → Run as Administrator
+
+☐ Node.js and npm installed
+  └─ Check: node --version && npm --version
+
+☐ Android SDK installed
+  └─ Usually in: C:\Users\[USERNAME]\AppData\Local\Android\Sdk
+
+☐ Java Development Kit (JDK) installed
+  └─ Android Studio includes this
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BUILD PROCESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Build Angular Frontend
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Open PowerShell (Administrator)
+
+☐ Navigate to project:
+   cd "C:\Users\Ganesh Vasanth\source\repos\CryptoCurrencyScanner"
+
+☐ Run production build:
+   npm run build:prod
+
+   ✓ Expected: "Compiled successfully"
+   ⏱️ Time: 2-5 minutes
+
+
+STEP 2: Sync with Capacitor Android
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Run sync command:
+   npx cap sync android
+
+   ✓ Expected: "Sync Android complete"
+   ⏱️ Time: 1 minute
+
+
+STEP 3: Build Android APK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Choose ONE of these options:
+
+OPTION A: Android Studio GUI (Recommended for First-Time)
+──────────────────────────────────────────────────────────
+
+☐ Run command:
+   npm run open:android
+
+☐ Android Studio opens, click BUILD menu
+
+☐ Select: Build → Build Bundle(s) / APK(s) → Build APK(s)
+
+☐ Wait for build to complete (showing green checkmark)
+
+☐ APK location shown in notification
+
+
+OPTION B: Command Line (Faster if you've done this before)
+──────────────────────────────────────────────────────────
+
+☐ Navigate to android folder:
+   cd android
+
+☐ Run build:
+   gradlew.bat assembleDebug
+
+   ✓ Expected: "BUILD SUCCESSFUL"
+   ⏱️ Time: 3-5 minutes
+
+☐ APK will be at:
+   📦 app/build/outputs/apk/debug/app-debug.apk
+
+
+STEP 4: Install APK on Device
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Verify device is connected:
+   adb devices
+
+   ✓ Should show your device in list
+
+☐ Install APK:
+   adb install "C:\Users\Ganesh Vasanth\source\repos\CryptoCurrencyScanner\android\app\build\outputs\apk\debug\app-debug.apk"
+
+   ✓ Expected: "Sucess"
+
+☐ App "Algo Trading" now on your device!
+
+
+STEP 5: Verify Installation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ App appears on device home screen
+
+☐ Open app and check:
+   - Dashboard loads ✓
+   - Positions visible ✓
+   - No red error messages ✓
+
+☐ View logs to confirm mobile detection:
+   adb logcat | findstr "CryptoCurrencyScanner"
+
+   ✓ Should see: "Platform detected: Mobile (Capacitor)"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TESTING FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Background Job Scheduling:
+☐ Configure a scheduled task in app
+☐ Close app completely (swipe from recents)
+☐ Lock your phone
+☐ Wait for scheduled time
+☐ 🔔 Notification should appear
+☐ ✅ Task executes even with phone locked!
+
+Device Permissions:
+☐ Grant notification permissions
+☐ Grant alarm/reminder permissions
+☐ Grant "Schedule exact alarms" permission
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ "npm not found" or "npm: No such file or directory"
+   → Node.js not installed
+   → Download from nodejs.org and install
+   → Restart PowerShell after installation
+
+❌ "gradle not found" or "gradlew.bat not found"
+   → Run: npx cap sync android (first)
+   → Ensure you're in: C:\...\CryptoCurrencyScanner\android
+
+❌ "adb not found"
+   → Add Android SDK tools to PATH
+   → Or use full path: C:\Users\[USERNAME]\AppData\Local\Android\Sdk\platform-tools\adb
+
+❌ "BUILD FAILED" in gradle
+   → Check Android Studio console for error details
+   → Clear cache: cd android && gradlew.bat clean build
+
+❌ "Cannot find connected device"
+   → Check USB cable
+   → Enable USB Debugging in device settings
+   → Reconnect device
+
+❌ "Installation failed: INSTALL_FAILED_VERSION_OLDER"
+   → Existing app has same/higher version
+   → Command: adb uninstall com.crypto.scanner
+   → Then reinstall
+
+❌ App shows "Mobile (Capacitor)" but jobs don't run in background
+   → Check notification permissions in device Settings
+   → Disable "Battery optimization" for "Algo Trading" app
+   → Check: Settings → Dev Options → Remove project activity limit
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Total time: ~15-20 minutes (first build)
+After build: ~5-10 minutes (subsequent builds)
+
+✅ APK successfully built
+✅ Installed on device
+✅ Background job scheduling works 24/7
+✅ Ready for production use!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

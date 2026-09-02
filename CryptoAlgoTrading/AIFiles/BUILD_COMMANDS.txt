@@ -1,0 +1,59 @@
+# Quick APK Build Commands - Run These in PowerShell
+
+## Step 1: Build Angular Production
+```powershell
+cd "C:\Users\Ganesh Vasanth\source\repos\CryptoCurrencyScanner"
+npm run build:prod
+```
+⏱️ Takes ~2-5 minutes
+
+## Step 2: Sync with Capacitor
+```powershell
+npx cap sync android
+```
+⏱️ Takes ~1 minute
+
+## Step 3a: Build Debug APK (Quick Testing)
+```powershell
+cd "C:\Users\Ganesh Vasanth\source\repos\CryptoCurrencyScanner\android"
+gradlew.bat assembleDebug
+```
+⏱️ Takes ~3-5 minutes
+📦 Output: `app/build/outputs/apk/debug/app-debug.apk`
+
+## Step 3b: Or Open Android Studio GUI
+```powershell
+npm run open:android
+```
+Then in Android Studio: **Build** → **Build APK(s)**
+
+## Step 4: Install on Device
+```powershell
+adb install "C:\Users\Ganesh Vasanth\source\repos\CryptoCurrencyScanner\android\app\build\outputs\apk\debug\app-debug.apk"
+```
+
+## Step 5: View App Logs
+```powershell
+adb logcat | findstr "CryptoCurrencyScanner"
+```
+
+---
+
+## Total Build Time: ~10-15 minutes for first build
+(Subsequent builds: ~5-10 minutes)
+
+## What You Get:
+✅ Crypto Currency Scanner app on your Android device
+✅ Background job scheduling (tasks run 24/7)
+✅ Responsive mobile UI
+✅ No manual intervention needed after installation
+
+## Device Requirements:
+- Android 8.0 or higher (SDK 26+)
+- USB debugging enabled
+- Device connected via USB
+
+## Verify Build Success:
+After installing APK, open app and check logs:
+- Should see "📱 Platform detected: Mobile (Capacitor)"
+- Job scheduling logs appear in logcat
