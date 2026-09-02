@@ -458,6 +458,231 @@ export class DeltaService {
     }
   }
 
+  /**
+   * Get limit orders (stop_limit type) for a specific product
+   * Used to fetch existing hedge orders before placing new ones
+   * 
+   * @param productId - The product ID to check for limit orders
+   * @returns Array of limit orders with order_type=stop_limit
+   */
+  async getLimitOrdersForProduct(productId: number): Promise<any[]> {
+    try {
+      const path = `/v2/orders?product_ids=${productId}&state=pending&order_types=stop_limit`;
+      this.debug.log(`Fetching limit orders for product ${productId}: ${path}`);
+
+      const response = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
+      const orders = Array.isArray(response) ? response : (response?.result || response?.data || []);
+
+      this.debug.log(
+        `getLimitOrdersForProduct returned ${orders?.length || 0} limit orders for product ${productId}`
+      );
+
+      return orders || [];
+    } catch (error: any) {
+      this.debug.error(`getLimitOrdersForProduct error for product ${productId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Cancel limit orders for a specific product
+   * Cancels all existing limit orders before placing new hedge orders
+   * 
+   * @param productId - The product ID whose limit orders to cancel
+   * @param limitOrders - Array of limit orders to cancel
+   * @returns Number of successfully cancelled orders
+   */
+  async cancelLimitOrders(productId: number, limitOrders: any[]): Promise<number> {
+    if (!limitOrders || limitOrders.length === 0) {
+      return 0;
+    }
+
+    let cancelledCount = 0;
+    for (const order of limitOrders) {
+      try {
+        const payload = {
+          id: order.id,
+          client_order_id: order.client_order_id || `order_${order.id}`,
+          product_id: productId
+        };
+
+        this.debug.log(`Cancelling limit order ${order.id} with payload:`, payload);
+        await this.authenticatedRequest('DELETE', '/v2/orders', payload, this.baseUrl);
+        this.debug.log(`✅ Limit order ${order.id} cancelled successfully`);
+        cancelledCount++;
+      } catch (error: any) {
+        this.debug.error(`❌ Failed to cancel limit order ${order.id}:`, error);
+      }
+    }
+
+    return cancelledCount;
+  }
+
+  /**
+   * Place a hedge limit order (opposite to current position)
+   * For BUY positions: place SELL limit order
+   * For SELL positions: place BUY limit order
+   * 
+   * @param productId - The product ID
+   * @param symbol - The symbol (for client_order_id)
+   * @param positionSize - Current position size (+ve for BUY, -ve for SELL)
+   * @param prev3High - 3-day high price
+   * @param prev3Low - 3-day low price
+   * @returns Object with hedge order details or error info
+   */
+  async placeHedgeLimitOrder(
+    productId: number,
+    symbol: string,
+    positionSize: number,
+    prev3High: number,
+    prev3Low: number
+  ): Promise<{ success: boolean; message: string; orderId?: string }> {
+    try {
+      const config = this.configService.getConfig();
+      const bufferPercentage = config.bufferPercentage || 0.4;
+      const riskAmountInr = config.riskAmountInr || 2500;
+
+      // Determine hedge side (opposite to position)
+      const isBuyPosition = positionSize > 0;
+      const hedgeSide = isBuyPosition ? 'sell' : 'buy';
+
+      this.debug.log(`🔄 Calculating hedge order for ${symbol} (${hedgeSide.toUpperCase()} hedge)`, {
+        positionSize,
+        prev3High,
+        prev3Low,
+        bufferPercentage,
+        riskAmountInr
+      });
+
+      // Calculate hedge entry price and stop price based on side
+      // Using the specified formulas
+
+      // BUY Entry Price = prev3High * (1 + bufferPercentage/100)
+      const buyEntryPrice = this.round(prev3High * (1 + bufferPercentage / 100), 4);
+      // BUY Stop Price = BUY Entry Price * (1 - bufferPercentage/100)
+      const buyStopPrice = this.round(buyEntryPrice * (1 - bufferPercentage / 100), 4);
+
+      // SELL Entry Price = prev3Low * (1 - bufferPercentage/100)
+      const sellEntryPrice = this.round(prev3Low * (1 - bufferPercentage / 100), 4);
+      // SELL Stop Price = SELL Entry Price * (1 + bufferPercentage/100)
+      const sellStopPrice = this.round(sellEntryPrice * (1 + bufferPercentage / 100), 4);
+
+      // Determine actual entry and stop prices based on hedge side
+      let entryPrice: number;
+      let stopPrice: number;
+
+      if (hedgeSide === 'sell') {
+        // For SELL hedge (when position is BUY)
+        entryPrice = sellEntryPrice;
+        stopPrice = sellStopPrice;
+      } else {
+        // For BUY hedge (when position is SELL)
+        entryPrice = buyEntryPrice;
+        stopPrice = buyStopPrice;
+      }
+
+      // Calculate SL Difference = |Buy Entry Price - Sell Entry Price|
+      const slDifference = Math.abs(buyEntryPrice - sellEntryPrice);
+
+      if (slDifference <= 0) {
+        return { 
+          success: false, 
+          message: `Invalid SL difference: ${slDifference}` 
+        };
+      }
+
+      this.debug.log(`📊 Hedge Price Calculation (prev3High: ${prev3High}, prev3Low: ${prev3Low}, Buffer: ${bufferPercentage}%):`, {
+        buyEntryPrice: buyEntryPrice.toFixed(4),
+        buyStopPrice: buyStopPrice.toFixed(4),
+        sellEntryPrice: sellEntryPrice.toFixed(4),
+        sellStopPrice: sellStopPrice.toFixed(4),
+        activeHedge: hedgeSide.toUpperCase(),
+        activeEntryPrice: entryPrice.toFixed(4),
+        activeStopPrice: stopPrice.toFixed(4),
+        slDifference: slDifference.toFixed(4)
+      });
+
+      // Calculate position size based on risk
+      // Position Size = Risk Amount (INR) / (SL Difference * Exchange Rate)
+      const exchangeRate = 83; // USD to INR conversion (configurable)
+      const slDifferenceInr = slDifference * exchangeRate;
+
+      // Raw position size in units
+      const positionSizeUnits = riskAmountInr / slDifferenceInr;
+
+      // Get product lot size
+      const product = await this.getProductBySymbol(symbol);
+      const lotSize = product?.contract_value || 0.001;
+
+      // Align to lot size: round to nearest lot and ensure minimum
+      const quantity = Math.max(lotSize, Math.round(positionSizeUnits / lotSize) * lotSize);
+      const sizeInContracts = Math.round(quantity / lotSize);
+
+      this.debug.log(`🎯 Position Sizing Calculation:`, {
+        prev3High,
+        prev3Low,
+        bufferPercentage,
+        buyEntryPrice: buyEntryPrice.toFixed(4),
+        sellEntryPrice: sellEntryPrice.toFixed(4),
+        slDifference: slDifference.toFixed(4),
+        riskAmountInr,
+        exchangeRate,
+        slDifferenceInr: slDifferenceInr.toFixed(2),
+        positionSizeUnits: positionSizeUnits.toFixed(8),
+        lotSize,
+        quantity: quantity.toFixed(8),
+        sizeInContracts,
+        riskPerContract: (riskAmountInr / sizeInContracts).toFixed(2)
+      });
+
+      // Validate position size
+      if (sizeInContracts <= 0) {
+        return { 
+          success: false, 
+          message: `Invalid position size calculated: ${sizeInContracts}` 
+        };
+      }
+
+      // Place the hedge limit order
+      // Generate client_order_id: max 32 chars (format: sym_side_ts where ts is last 8 digits)
+      const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
+      const sideAbbr = hedgeSide.charAt(0).toUpperCase(); // 'B' or 'S'
+      const symbolAbbr = symbol.substring(0, 8).toUpperCase(); // First 8 chars of symbol
+      const clientOrderId = `${symbolAbbr}${sideAbbr}${timestamp}`.substring(0, 32); // Max 32 chars
+
+      const payload = {
+        product_id: productId,
+        size: String(sizeInContracts),
+        side: hedgeSide,
+        order_type: 'limit_order',
+        limit_price: String(entryPrice),
+        stop_order_type: 'stop_loss_order',
+        stop_price: String(stopPrice),
+        client_order_id: clientOrderId
+      };
+
+      this.debug.log(`📤 Placing hedge limit order with payload:`, payload);
+      const result = await this.authenticatedRequest('POST', '/v2/orders', payload, this.baseUrl);
+
+      const orderId = result?.id || result?.order_id;
+      const message = `Hedge ${hedgeSide.toUpperCase()} limit order placed: ${sizeInContracts} contracts @ Entry: ${entryPrice} (SL: ${stopPrice}, Risk: ₹${riskAmountInr})`;
+
+      this.debug.log(`✅ ${message}`);
+      return { 
+        success: true, 
+        message,
+        orderId: String(orderId)
+      };
+    } catch (error: any) {
+      const message = `Failed to place hedge order: ${error?.message || 'Unknown error'}`;
+      this.debug.error(message, error);
+      return { 
+        success: false, 
+        message
+      };
+    }
+  }
+
   async getOrders(productId?: number): Promise<any[]> {
     try {
       // Fetch all orders without any query parameters
@@ -500,23 +725,87 @@ export class DeltaService {
   }
 
   /**
-   * Cancel all open stop orders
-   * Uses DELETE /v2/orders/all with payload
+   * Cancel pending orders ONLY for symbols that don't have current positions
+   * This prevents accidentally cancelling orders for symbols with active trading positions
+   * 
+   * Uses DELETE /v2/orders endpoint with payload containing: id, client_order_id, product_id
+   * 
+   * Logic:
+   * 1. Fetch all open positions and extract symbol list
+   * 2. Fetch all pending orders
+   * 3. Filter orders to cancel only those whose symbols are NOT in positions
+   * 4. Cancel filtered orders using the correct payload format
+   * 
+   * @returns Number of orders successfully cancelled
    */
   async cancelPendingOrders(): Promise<number> {
     try {
-      const payload = {
-        contract_types: 'perpetual_futures',
-        cancel_limit_orders: false,
-        cancel_stop_orders: true,
-        cancel_reduce_only_orders: false
-      };
+      // Step 1: Fetch all open positions to get symbols with active trades
+      this.debug.log('Step 1: Fetching open positions...');
+      const positions = await this.getPositions();
+      const positionSymbols = new Set(
+        positions
+          .map(p => (p.product_symbol || p.symbol || '').toUpperCase())
+          .filter(s => s.length > 0)
+      );
 
-      this.debug.log('Cancelling all open stop orders with payload:', payload);
-      const result = await this.authenticatedRequest('DELETE', '/v2/orders/all', payload, this.baseUrl);
+      this.debug.log(`Found ${positionSymbols.size} symbols with open positions:`, Array.from(positionSymbols));
 
-      this.debug.log(`Orders cancelled successfully:`, result);
-      return 1; // Return 1 to indicate the cancellation request was successful
+      // Step 2: Fetch all pending and open orders
+      this.debug.log('Step 2: Fetching all pending orders...');
+      const allOrders = await this.getOrders();
+
+      if (allOrders.length === 0) {
+        this.debug.log('No pending orders found to cancel');
+        return 0;
+      }
+
+      this.debug.log(`Found ${allOrders.length} total pending orders`, 
+        allOrders.map(o => ({ id: o.id, product_id: o.product_id, symbol: o.symbol, state: o.state }))
+      );
+
+      // Step 3: Filter orders - only cancel if symbol is NOT in positions
+      const ordersToCancel = allOrders.filter(order => {
+        const orderSymbol = (order.symbol || '').toUpperCase();
+        const hasPosition = positionSymbols.has(orderSymbol);
+
+        this.debug.log(`Order ${order.id} (${orderSymbol}): hasPosition=${hasPosition}, included=${!hasPosition}`);
+
+        return !hasPosition; // Cancel only if NO position exists
+      });
+
+      this.debug.log(`After filtering: ${ordersToCancel.length} orders to cancel (${allOrders.length - ordersToCancel.length} kept due to open positions)`);
+
+      if (ordersToCancel.length === 0) {
+        this.debug.log('No orders to cancel - all pending orders have corresponding positions');
+        return 0;
+      }
+
+      // Step 4: Cancel each order individually using DELETE /v2/orders with payload
+      let cancelledCount = 0;
+      for (const order of ordersToCancel) {
+        try {
+          // Construct payload with id, client_order_id, and product_id
+          const payload = {
+            id: order.id,
+            client_order_id: order.client_order_id || `order_${order.id}`,
+            product_id: order.product_id
+          };
+
+          this.debug.log(`Cancelling order ${order.id} for symbol ${order.symbol} with payload:`, payload);
+
+          // Use DELETE /v2/orders with payload (not in path)
+          const result = await this.authenticatedRequest('DELETE', '/v2/orders', payload, this.baseUrl);
+          this.debug.log(`✅ Order ${order.id} cancelled successfully`, result);
+          cancelledCount++;
+        } catch (error: any) {
+          this.debug.error(`❌ Failed to cancel order ${order.id}:`, error);
+          // Continue cancelling other orders even if one fails
+        }
+      }
+
+      this.debug.log(`✅ Successfully cancelled ${cancelledCount}/${ordersToCancel.length} orders`);
+      return cancelledCount;
     } catch (error: any) {
       this.debug.error('cancelPendingOrders error:', error);
       return 0;
@@ -793,6 +1082,7 @@ export class DeltaService {
 
       const currentStopLoss = parseFloat(stopLossOrder.stop_price);
       this.debug.log(`Current SL: ${currentStopLoss}, New SL: ${newStopLoss}`);
+          
 
       if (newStopLoss === currentStopLoss) {
         return { success: true, message: `No update needed (SL: ${currentStopLoss})`, symbol };
@@ -811,11 +1101,45 @@ export class DeltaService {
 
       await this.authenticatedRequest('PUT', '/v2/orders', updatePayload, this.baseUrl);
 
-      this.debug.log(`✅ Stop loss updated successfully from ${currentStopLoss} to ${newStopLoss}`);
+      const positionType = isBuyPosition ? 'BUY' : 'SELL';
+      this.debug.log(`✅ Stop loss updated successfully (${positionType}) from ${currentStopLoss} to ${newStopLoss}`);
+
+      // ============================================
+      // STEP 6: Place hedge limit order (ONLY if SL was updated)
+      // ============================================
+      // Place opposite-side limit order: BUY for SELL positions, SELL for BUY positions
+      this.debug.log(`\n🔄 Step 6: Placing hedge limit order for ${symbol}...`);
+
+      // Fetch existing limit orders
+      const existingLimitOrders = await this.getLimitOrdersForProduct(productId);
+      this.debug.log(`Found ${existingLimitOrders.length} existing limit orders`, existingLimitOrders.map(o => ({ id: o.id, side: o.side })));
+
+      // Cancel existing limit orders before placing new ones
+      if (existingLimitOrders.length > 0) {
+        const cancelledCount = await this.cancelLimitOrders(productId, existingLimitOrders);
+        this.debug.log(`Cancelled ${cancelledCount} existing limit orders`);
+      }
+
+      // Place new hedge limit order
+      const hedgeResult = await this.placeHedgeLimitOrder(
+        productId,
+        symbol,
+        positionSize,
+        prev3High,
+        prev3Low
+      );
+
+      // Return message with both SL update and hedge order status
+      let message = `Updated SL (${positionType}) from ${currentStopLoss} to ${newStopLoss}`;
+      if (hedgeResult.success) {
+        message += ` | Hedge: ${hedgeResult.message}`;
+      } else {
+        message += ` | Hedge Warning: ${hedgeResult.message}`;
+      }
 
       return { 
         success: true, 
-        message: `Updated SL from ${currentStopLoss} to ${newStopLoss}`, 
+        message,
         symbol 
       };
 
@@ -1157,6 +1481,12 @@ export class DeltaService {
       ? this.round(entryPrice / bufferMultiplier, 4)
       : this.round(entryPrice * bufferMultiplier, 4);
 
+    // Generate client_order_id: max 32 chars (format: sym_side_ts)
+    const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
+    const sideAbbr = side.charAt(0).toUpperCase(); // 'B' or 'S'
+    const symbolAbbr = input.symbol.substring(0, 8).toUpperCase(); // First 8 chars of symbol
+    const clientOrderId = `${symbolAbbr}${sideAbbr}${timestamp}`.substring(0, 32); // Max 32 chars
+
     const payload = {
       product_id: productId,
       size: String(sizeInContracts),
@@ -1165,7 +1495,7 @@ export class DeltaService {
       limit_price: String(entryPrice),
       stop_order_type: 'stop_loss_order',
       stop_price: String(stopPrice),
-      client_order_id: `${input.symbol}_${side}_${sizeInContracts}`
+      client_order_id: clientOrderId
     };
 
     this.debug.log('Placing limit bracket order payload:', payload);
