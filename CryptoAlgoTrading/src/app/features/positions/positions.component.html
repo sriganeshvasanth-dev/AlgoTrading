@@ -1,0 +1,157 @@
+<section class="positions-section">
+  <header class="header">
+    <div class="header-content">
+      <div class="header-title">
+        <h1>📊 Open Positions</h1>
+        <p class="subtitle">Your Active Trading Positions</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-card">
+          <span class="stat-label">Total Positions</span>
+          <span class="stat-value">{{ positions.length }}</span>
+        </div>
+        <div class="stat-card" [class.profit]="getTotalPnl() > 0" [class.loss]="getTotalPnl() < 0">
+          <span class="stat-label">Total P&L</span>
+          <span class="stat-value">₹ {{ getTotalPnl() | number: '1.2-2' }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <button (click)="placeTargetsAndStopLoss()" [disabled]="placingTargetsLoading || loading || positions.length === 0" class="btn-place-targets" title="Place bracket orders (stop loss & take profit) for all positions with half-position targets">
+        <svg *ngIf="!placingTargetsLoading" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v20"></path>
+          <path d="M5 9h14"></path>
+          <path d="M5 15h14"></path>
+        </svg>
+        <span *ngIf="!placingTargetsLoading">Place Targets & StopLoss</span>
+        <svg *ngIf="placingTargetsLoading" class="spinner-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 2a10 10 0 0 1 10 10"></path>
+        </svg>
+        <span *ngIf="placingTargetsLoading">Placing Orders...</span>
+      </button>
+      <button (click)="updateAllTrailingStopLoss()" [disabled]="trailingSLLoading || loading || positions.length === 0" class="btn-trailing-stop">
+        <svg *ngIf="!trailingSLLoading" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+        <span *ngIf="!trailingSLLoading">Trailing Stop Loss</span>
+        <svg *ngIf="trailingSLLoading" class="spinner-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+        </svg>
+        <span *ngIf="trailingSLLoading">Updating All...</span>
+      </button>
+      <button (click)="loadPositions()" [disabled]="loading" class="btn-refresh">
+        <svg *ngIf="!loading" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+        <span *ngIf="!loading">Refresh Positions</span>
+        <svg *ngIf="loading" class="spinner-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+        </svg>
+        <span *ngIf="loading">Loading...</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <div *ngIf="error" class="error-message">
+      <strong>⚠️ Error:</strong> {{ error }}
+    </div>
+
+    <!-- Trailing SL Results Modal -->
+    <div class="order-modal-backdrop" *ngIf="showTrailingSLResults" (click)="closeTrailingSLResults()">
+      <div class="order-modal trailing-sl-modal" (click)="$event.stopPropagation()">
+        <div class="order-modal-header">
+          <h2>📈 Trailing Stop Loss Results</h2>
+          <button type="button" class="order-close" (click)="closeTrailingSLResults()">✕</button>
+        </div>
+        <div class="order-modal-body">
+          <div class="trailing-sl-summary">
+            <div class="summary-stat">
+              <span class="summary-label">Total:</span>
+              <span class="summary-value">{{ trailingSLResults.length }}</span>
+            </div>
+            <div class="summary-stat success">
+              <span class="summary-label">Success:</span>
+              <span class="summary-value">{{ trailingSLResults.filter(r => r.success).length }}</span>
+            </div>
+            <div class="summary-stat error">
+              <span class="summary-label">Failed:</span>
+              <span class="summary-value">{{ trailingSLResults.filter(r => !r.success).length }}</span>
+            </div>
+          </div>
+          <div class="trailing-sl-results">
+            <div *ngFor="let result of trailingSLResults" 
+                 class="result-item" 
+                 [class.success]="result.success" 
+                 [class.error]="!result.success">
+              <span class="result-icon">{{ result.success ? '✅' : '❌' }}</span>
+              <div class="result-details">
+                <strong class="result-symbol">{{ result.symbol }}</strong>
+                <span class="result-message">{{ result.message }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="order-modal-footer">
+          <button type="button" class="btn-primary" (click)="closeTrailingSLResults()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="!positions.length && !loading && !error" class="empty-state">
+      <div class="empty-icon">📭</div>
+      <h2>No Open Positions</h2>
+      <p>You currently have no active trading positions. Click "Refresh" to check for updates.</p>
+    </div>
+
+    <div *ngIf="positions.length > 0" class="table-container">
+      <table class="positions-table professional">
+        <thead>
+          <tr>
+            <th class="action-col">Action</th>
+            <th>Symbol</th>
+            <th class="text-right">Entry Price</th>
+            <th class="text-right">Mark Price</th>
+            <th class="text-right">P&L</th>
+            <th class="text-right">Margin</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let pos of positions" [ngClass]="getRowClass(pos)">
+            <td class="action-cell">
+              <button 
+                class="btn-trailing-sl" 
+                (click)="updateSingleTrailingSL(pos)"
+                [disabled]="isUpdating(pos.symbol)"
+                title="Update Trailing Stop Loss">
+                <span *ngIf="!isUpdating(pos.symbol)">📊</span>
+                <span *ngIf="isUpdating(pos.symbol)" class="spinner">⏳</span>
+              </button>
+            </td>
+            <td class="symbol-cell">
+              <div class="symbol-wrapper">
+                <div class="symbol-info">
+                  <strong class="symbol-name">{{ pos.symbol }}</strong>
+                  <span class="position-side" [class.long]="pos.size > 0" [class.short]="pos.size < 0">
+                    {{ pos.size > 0 ? 'LONG' : 'SHORT' }}
+                  </span>
+                </div>
+              </div>
+            </td>
+            <td class="text-right price-cell">₹ {{ pos.entry_price | number: '1.2-2' }}</td>
+            <td class="text-right price-cell">₹ {{ pos.mark_price | number: '1.2-2' }}</td>
+            <td class="text-right pnl-cell">
+              <strong class="pnl-amount" [class.profit]="pos.pnl > 0" [class.loss]="pos.pnl < 0">
+                ₹ {{ pos.pnl | number: '1.2-2' }}
+              </strong>
+            </td>
+            <td class="text-right margin-cell">₹ {{ pos.margin | number: '1.2-2' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</section>

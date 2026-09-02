@@ -1,0 +1,292 @@
+<section class="dashboard">
+  <header class="header">
+    <div class="header-content">
+      <div class="header-title">
+        <h1>📊 Crypto Scanner</h1>
+        <p class="subtitle">3-Day High/Low Crossover Detection</p>
+      </div>
+      <div class="header-stats">
+        <div class="stat-card">
+          <span class="stat-label">Total Results</span>
+          <span class="stat-value">{{items.length}}</span>
+        </div>
+        <div class="stat-card highlighted">
+          <span class="stat-label">Status</span>
+          <span class="stat-value" *ngIf="loading">{{progress}}/{{total}}</span>
+          <span class="stat-value" *ngIf="!loading">Ready</span>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <button (click)="scan()" [disabled]="loading" class="btn-primary">
+        <span *ngIf="!loading">🔍 Scan Now</span>
+        <span *ngIf="loading">⏳ Scanning...</span>
+      </button>
+      <button (click)="openLimitOrderModal()" [disabled]="loading || loadingLimitOrderCandidates" class="btn-secondary" style="margin-left:12px">
+        <span *ngIf="!loadingLimitOrderCandidates">📥 Place Limit order</span>
+        <span *ngIf="loadingLimitOrderCandidates">⏳ Loading...</span>
+      </button>
+      <label class="filter-label" style="margin-left:20px;">
+        <span>Minimum Price (₹)</span>
+        <input type="number" [(ngModel)]="minPrice" (ngModelChange)="onPriceFilterChange()" min="0" step="0.1" class="filter-input" />
+      </label>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <div *ngIf="!items.length && !loading" class="empty-state">
+      <div class="empty-icon">📭</div>
+      <h2>No Results Yet</h2>
+      <p>Click "Scan Now" to find crypto symbols that crossed the 3-day high/low levels.</p>
+    </div>
+
+    <div *ngIf="items.length" class="results-section">
+      <div class="results-header">
+        <div class="results-title-section">
+          <h2>Crossover Results</h2>
+          <div class="result-stats">
+              <span class="badge high-badge">🟢 HIGH: {{getHighCount()}}</span>
+              <span class="badge low-badge">🔴 LOW: {{getLowCount()}}</span>
+              <span class="badge total-badge">📊 Total: {{filteredItems.length}}</span>
+            </div>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th class="col-action">Action</th>
+              <th class="col-symbol">Symbol</th>
+              <th class="col-price">Today's Price</th>
+              <th class="col-3day">3-Day High</th>
+              <th class="col-3day">3-Day Low</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let it of filteredItems; let i = index" [class.odd]="i % 2 === 0">
+              <td class="col-action">
+                <button class="btn-order" (click)="placeOrder(it)" title="Place Order">
+                  <span class="order-icon">⚡</span>
+                  <span>Place Order</span>
+                </button>
+              </td>
+              <td class="col-symbol"><strong>{{it.symbol}}</strong></td>
+              <td class="col-price">
+                <span class="price-direction" [class.up]="it.crossedType==='HIGH'" [class.down]="it.crossedType==='LOW'">
+                  {{ it.crossedType === 'HIGH' ? '↑' : '↓' }}
+                </span>
+                <span class="price-value">₹ {{it.price | number:'1.2-2'}}</span>
+              </td>
+              <td class="col-3day"><span class="high-value">₹ {{it.prev3High | number:'1.2-2'}}</span></td>
+              <td class="col-3day"><span class="low-value">₹ {{it.prev3Low | number:'1.2-2'}}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Task Status Monitor -->
+  <section class="task-status-section">
+    <app-task-status></app-task-status>
+  </section>
+
+  <div class="order-modal-backdrop" *ngIf="showOrderModal">
+    <div class="order-modal">
+      <div class="order-modal-header">
+        <h3>Place Order - {{ selectedItem?.symbol }}</h3>
+        <button type="button" class="order-close" (click)="closeOrderModal()">✕</button>
+      </div>
+
+      <div class="order-modal-body" *ngIf="selectedItem">
+        <div class="order-grid">
+          <label>
+            <span>Side</span>
+            <select [(ngModel)]="orderForm.side">
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Risk (₹ 2500 - ₹ 3000)</span>
+            <input type="number" min="2500" max="3000" step="1" [(ngModel)]="orderForm.riskAmountInr" [disabled]="orderForm.useManualQuantity" />
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" [(ngModel)]="orderForm.useManualQuantity" />
+            <span>Use manual quantity</span>
+          </label>
+
+          <label>
+            <span>Quantity</span>
+            <input type="number" min="0" step="0.0001" [(ngModel)]="orderForm.quantity" [disabled]="!orderForm.useManualQuantity" />
+          </label>
+        </div>
+
+        <div class="order-preview" *ngIf="orderPreview as p">
+          <div><strong>Entry Price:</strong> ₹ {{ p.entryPrice | number:'1.2-2' }}</div>
+          <div><strong>Stop Loss:</strong> ₹ {{ p.stopLossPrice | number:'1.2-2' }}</div>
+          <div><strong>SL Difference:</strong> {{ p.stopLossDifference | number:'1.2-4' }}</div>
+          <div><strong>Total Qty:</strong> {{ p.quantity | number:'1.2-4' }}</div>
+          <div><strong>SL Qty:</strong> {{ p.quantity | number:'1.2-4' }} (Full Position)</div>
+          <div><strong>Target Price:</strong> ₹ {{ p.targetPrice | number:'1.2-2' }}</div>
+          <div><strong>Target Qty:</strong> {{ p.targetQuantity | number:'1.2-4' }} (Half Position)</div>
+          <div><strong>Effective Risk:</strong> ₹ {{ p.effectiveRisk | number:'1.2-2' }}</div>
+        </div>
+
+        <div class="order-message error" *ngIf="orderError">{{ orderError }}</div>
+        <div class="order-message success" *ngIf="orderSuccess">{{ orderSuccess }}</div>
+      </div>
+
+      <div class="order-modal-footer">
+        <button type="button" class="btn-cancel" (click)="closeOrderModal()" [disabled]="placingOrder">Cancel</button>
+        <button type="button" class="btn-confirm" (click)="confirmPlaceOrder()" [disabled]="placingOrder">
+          {{ placingOrder ? 'Placing...' : 'Confirm Place Order' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Limit Order Modal (independent of scanner signals) -->
+  <div class="order-modal-backdrop" *ngIf="showLimitOrderModal">
+    <div class="order-modal limit-order-modal">
+      <div class="order-modal-header">
+        <div class="modal-header-content">
+          <h3>Place Limit Orders</h3>
+          <p class="modal-subtitle">Configure orders for top 80 symbols by volume</p>
+        </div>
+        <button type="button" class="order-close" (click)="closeLimitOrderModal()" aria-label="Close">✕</button>
+      </div>
+
+      <div class="order-modal-body">
+        <!-- Status Messages -->
+        <div *ngIf="limitOrderError" class="alert alert-error">
+          <span class="alert-icon">⚠️</span>
+          <div class="alert-content">
+            <strong>Error</strong>
+            <p>{{ limitOrderError }}</p>
+          </div>
+        </div>
+
+        <div *ngIf="limitOrderSuccess" class="alert alert-success">
+          <span class="alert-icon">✅</span>
+          <div class="alert-content">
+            <strong>Success</strong>
+            <p>{{ limitOrderSuccess }}</p>
+          </div>
+        </div>
+
+        <!-- Loading State -->
+        <div *ngIf="loadingLimitOrderCandidates" class="loading-container">
+          <div class="loading-spinner"></div>
+          <p class="loading-text">Loading symbols and market data...</p>
+          <small>Fetching top 80 symbols by volume and their 3-day high/low prices</small>
+        </div>
+
+        <!-- Candidates List -->
+        <div *ngIf="!loadingLimitOrderCandidates && limitOrderCandidates.length > 0" class="limit-order-candidates">
+          <div class="candidates-header">
+            <h4>Select Symbols & Configure Orders</h4>
+            <span class="candidates-count">{{ limitOrderCandidates.length }} symbols available</span>
+          </div>
+
+          <div class="candidates-table-wrapper">
+            <table class="candidates-table">
+              <thead>
+                <tr>
+                  <th class="col-select">
+                    <input type="checkbox" 
+                      [checked]="limitOrderCandidates.length > 0 && isAllSelected()" 
+                      (change)="toggleSelectAll($event)"
+                      title="Select all orders" />
+                  </th>
+                  <th class="col-symbol">Symbol</th>
+                  <th class="col-price">Current Price</th>
+                  <th class="col-3day">3-Day High</th>
+                  <th class="col-3day">3-Day Low</th>
+                  <th class="col-side">Order Side</th>
+                  <th class="col-risk">Risk Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let candidate of limitOrderCandidates" class="candidate-row">
+                  <td class="col-select">
+                    <input type="checkbox" 
+                      [checked]="isOrderSelected(candidate.symbol, candidate.crossedType)"
+                      (change)="toggleOrderSelection(candidate.symbol, candidate.crossedType, $event)"
+                      title="Select this order" />
+                  </td>
+                  <td class="col-symbol">
+                    <strong class="symbol-badge">{{ candidate.symbol }}</strong>
+                    <span class="order-type-badge" [ngClass]="candidate.crossedType === 'HIGH' ? 'buy-type' : 'sell-type'">
+                      {{ candidate.crossedType === 'HIGH' ? '🟢 BUY' : '🔴 SELL' }}
+                    </span>
+                  </td>
+                  <td class="col-price">
+                    <span class="price-value">₹{{ candidate.price | number:'1.2-2' }}</span>
+                  </td>
+                  <td class="col-3day">
+                    <span class="high-value">₹{{ candidate.prev3High | number:'1.2-2' }}</span>
+                  </td>
+                  <td class="col-3day">
+                    <span class="low-value">₹{{ candidate.prev3Low | number:'1.2-2' }}</span>
+                  </td>
+                  <td class="col-side">
+                    <select [ngModel]="getSelectionSide(candidate.symbol, candidate.crossedType)" (ngModelChange)="setSelectionSide(candidate.symbol, candidate.crossedType, $event)" class="side-select professional">
+                      <option value="buy">🔵 BUY</option>
+                      <option value="sell">🔴 SELL</option>
+                    </select>
+                  </td>
+                  <td class="col-risk">
+                    <input type="number" [ngModel]="getSelectionRisk(candidate.symbol, candidate.crossedType)" (ngModelChange)="setSelectionRisk(candidate.symbol, candidate.crossedType, $event)" min="1000" step="100" class="risk-input professional" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="candidates-info">
+            <div class="info-card">
+              <strong>Buy Strategy:</strong> Entry = Prev 3-Day High × 1.003
+            </div>
+            <div class="info-card">
+              <strong>Sell Strategy:</strong> Entry = Prev 3-Day Low × 0.997
+            </div>
+            <div class="info-card">
+              <strong>All Orders:</strong> Include trailing stop loss & take profit target
+            </div>
+          </div>
+        </div>
+
+        <!-- Empty State -->
+        <div *ngIf="!loadingLimitOrderCandidates && limitOrderCandidates.length === 0 && !limitOrderError" class="empty-state-modal">
+          <div class="empty-icon">📭</div>
+          <h4>No Candidates Available</h4>
+          <p>No symbols matched your filter criteria. Try adjusting the minimum price filter.</p>
+        </div>
+      </div>
+
+      <div class="order-modal-footer professional-footer">
+        <div class="footer-summary" *ngIf="limitOrderCandidates.length > 0 && !loadingLimitOrderCandidates">
+          <span class="summary-text">
+            <strong>{{ getSelectedOrdersCount() }}</strong> orders selected
+          </span>
+        </div>
+        <div class="footer-actions">
+          <button type="button" class="btn-cancel professional" (click)="closeLimitOrderModal()" [disabled]="placingOrder">
+            Cancel
+          </button>
+          <button type="button" class="btn-confirm professional" (click)="placeLimitOrdersAll()" [disabled]="placingOrder || loadingLimitOrderCandidates || getSelectedOrdersCount() === 0">
+            <span *ngIf="!placingOrder">Place {{ getSelectedOrdersCount() }} Orders</span>
+            <span *ngIf="placingOrder">
+              <span class="spinner-small"></span>
+              Placing Orders...
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

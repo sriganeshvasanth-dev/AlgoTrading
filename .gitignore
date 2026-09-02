@@ -1,0 +1,8 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/CryptoAlgoTrading/android
+/CryptoAlgoTrading/obj/Debug
+/CryptoAlgoTrading/crypto-scanner.jks
+/CryptoAlgoTrading/package-lock.json

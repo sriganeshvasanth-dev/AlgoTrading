@@ -1,0 +1,283 @@
+<div class="pnl-container">
+  <!-- Header -->
+  <div class="pnl-header">
+    <h1>📊 P&L Analysis</h1>
+    <p class="subtitle">Analyze your profits and losses by date and symbol</p>
+  </div>
+
+  <!-- Date Range Selector -->
+  <div class="date-range-section">
+    <div class="date-inputs">
+      <div class="date-input-group">
+        <label for="startDate">Start Date:</label>
+        <input
+          type="date"
+          id="startDate"
+          [(ngModel)]="startDate"
+          class="date-input"
+        />
+      </div>
+
+      <div class="date-input-group">
+        <label for="endDate">End Date:</label>
+        <input
+          type="date"
+          id="endDate"
+          [(ngModel)]="endDate"
+          class="date-input"
+        />
+      </div>
+
+      <button class="btn btn-primary" (click)="loadPnLData()">
+        Load Data
+      </button>
+    </div>
+
+    <!-- Quick Filters -->
+    <div class="quick-filters">
+      <button class="btn btn-outline" (click)="setLast7Days()">Last 7 Days</button>
+      <button class="btn btn-outline" (click)="setLast30Days()">Last 30 Days</button>
+      <button class="btn btn-outline" (click)="setCurrentMonth()">This Month</button>
+      <button class="btn btn-outline" (click)="refreshData()">🔄 Refresh</button>
+    </div>
+
+    <!-- Data Source Selector -->
+    <div class="data-source-section">
+      <div class="data-source-selector">
+        <label>📊 P&L Source:</label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input 
+              type="radio" 
+              name="dataSource" 
+              value="fills"
+              [checked]="dataSource === 'fills'"
+              (change)="toggleDataSource('fills')"
+            />
+            Fills-based (Detailed trades)
+          </label>
+          <label class="radio-label">
+            <input 
+              type="radio" 
+              name="dataSource" 
+              value="transactions"
+              [checked]="dataSource === 'transactions'"
+              (change)="toggleDataSource('transactions')"
+            />
+            Transactions (Wallet realized)
+          </label>
+        </div>
+        <div class="source-info">
+          <small *ngIf="dataSource === 'fills'">
+            ℹ️ Calculated P&L using buy/sell fill matching (FIFO)
+          </small>
+          <small *ngIf="dataSource === 'transactions'">
+            ℹ️ Realized P&L from wallet transactions
+            <br />
+            💾 All wallet transaction types are included (check browser console for breakdown)
+          </small>
+          <small *ngIf="debugInfo.message" class="debug-message">
+            {{ debugInfo.message }}
+          </small>
+        </div>
+      </div>
+
+      <!-- Transaction Type Filter (only for wallet transactions) -->
+      <div class="transaction-type-filter" *ngIf="dataSource === 'transactions'">
+        <label for="transactionTypeSelect">Filter by Transaction Type:</label>
+        <div class="filter-controls">
+          <select 
+            id="transactionTypeSelect"
+            [(ngModel)]="selectedTransactionTypes"
+            multiple
+            class="transaction-type-select"
+            (change)="loadPnLData()"
+          >
+            <option *ngFor="let type of transactionTypeOptions" [value]="type.value">
+              {{ type.label }}
+            </option>
+          </select>
+          <button 
+            *ngIf="selectedTransactionTypes.length > 0"
+            class="btn btn-outline btn-sm"
+            (click)="selectedTransactionTypes = []; loadPnLData()"
+            title="Clear all filters"
+          >
+            Clear Filters
+          </button>
+        </div>
+        <small class="filter-info" *ngIf="selectedTransactionTypes.length > 0">
+          Selected: {{ selectedTransactionTypes.length }} type(s)
+        </small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="summary-section" *ngIf="!loading && hierarchyData.length > 0">
+    <div class="summary-card">
+      <div class="summary-item">
+        <span class="label">Total P&L:</span>
+        <span class="value" [ngClass]="getPnLClass(totalPnL)">
+          {{ formatCurrency(totalPnL) }}
+        </span>
+      </div>
+
+      <div class="summary-item">
+        <span class="label">Total Fees:</span>
+        <span class="value fees">{{ formatCurrency(totalFees) }}</span>
+      </div>
+
+      <div class="summary-item">
+        <span class="label">Net P&L:</span>
+        <span class="value" [ngClass]="getPnLClass(totalNetPnL)">
+          <strong>{{ formatCurrency(totalNetPnL) }}</strong>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div class="loading-section" *ngIf="loading">
+    <div class="spinner"></div>
+    <p>Loading P&L data...</p>
+  </div>
+
+  <!-- Error State -->
+  <div class="error-section" *ngIf="error && !loading">
+    <p class="error-message">❌ {{ error }}</p>
+    <button class="btn btn-primary" (click)="loadPnLData()">Try Again</button>
+  </div>
+
+  <!-- Hierarchical Tree Data -->
+  <div class="tree-section" *ngIf="!loading && hierarchyData.length > 0">
+    <div class="tree-container">
+      <div *ngFor="let month of hierarchyData" class="tree-node" [attr.data-level]="'month'">
+        <!-- Month Node -->
+        <div class="node-content" [class.expanded]="month.expanded">
+          <button
+            class="toggle-btn"
+            *ngIf="hasChildren(month)"
+            (click)="toggleExpanded(month)"
+          >
+            {{ month.expanded ? '▼' : '▶' }}
+          </button>
+          <span class="node-icon">{{ getNodeIcon(month) }}</span>
+          <span class="node-label">{{ month.label }}</span>
+          <div class="node-values">
+            <span class="pnl" [ngClass]="getPnLClass(month.pnl)">
+              {{ formatCurrency(month.pnl) }}
+            </span>
+            <span class="fees">
+              Fees: {{ formatCurrency(month.fees) }}
+            </span>
+            <span class="net-pnl" [ngClass]="getPnLClass(month.netPnL)">
+              Net: {{ formatCurrency(month.netPnL) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Week Nodes -->
+        <div *ngIf="month.expanded" class="children-container">
+          <div *ngFor="let week of month.children" class="tree-node" [attr.data-level]="'week'">
+            <!-- Week Node -->
+            <div class="node-content" [class.expanded]="week.expanded">
+              <button
+                class="toggle-btn"
+                *ngIf="hasChildren(week)"
+                (click)="toggleExpanded(week)"
+              >
+                {{ week.expanded ? '▼' : '▶' }}
+              </button>
+              <span class="node-icon">{{ getNodeIcon(week) }}</span>
+              <span class="node-label">{{ week.label }}</span>
+              <div class="node-values">
+                <span class="pnl" [ngClass]="getPnLClass(week.pnl)">
+                  {{ formatCurrency(week.pnl) }}
+                </span>
+                <span class="fees">
+                  Fees: {{ formatCurrency(week.fees) }}
+                </span>
+                <span class="net-pnl" [ngClass]="getPnLClass(week.netPnL)">
+                  Net: {{ formatCurrency(week.netPnL) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Date Nodes -->
+            <div *ngIf="week.expanded" class="children-container">
+              <div *ngFor="let date of week.children" class="tree-node" [attr.data-level]="'date'">
+                <!-- Date Node -->
+                <div class="node-content" [class.expanded]="date.expanded">
+                  <button
+                    class="toggle-btn"
+                    *ngIf="hasChildren(date)"
+                    (click)="toggleExpanded(date)"
+                  >
+                    {{ date.expanded ? '▼' : '▶' }}
+                  </button>
+                  <span class="node-icon">{{ getNodeIcon(date) }}</span>
+                  <span class="node-label">{{ date.label }}</span>
+                  <div class="node-values">
+                    <span class="pnl" [ngClass]="getPnLClass(date.pnl)">
+                      {{ formatCurrency(date.pnl) }}
+                    </span>
+                    <span class="fees">
+                      Fees: {{ formatCurrency(date.fees) }}
+                    </span>
+                    <span class="net-pnl" [ngClass]="getPnLClass(date.netPnL)">
+                      Net: {{ formatCurrency(date.netPnL) }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Symbol Nodes -->
+                <div *ngIf="date.expanded" class="children-container">
+                  <div *ngFor="let symbol of date.children" class="tree-node" [attr.data-level]="'symbol'">
+                    <!-- Symbol Node (Leaf) -->
+                    <div class="node-content leaf">
+                      <span class="node-icon">{{ getNodeIcon(symbol) }}</span>
+                      <span class="node-label">{{ symbol.label }}</span>
+                      <div class="node-values">
+                        <span class="pnl" [ngClass]="getPnLClass(symbol.pnl)">
+                          {{ formatCurrency(symbol.pnl) }}
+                        </span>
+                        <span class="fees">
+                          Fees: {{ formatCurrency(symbol.fees) }}
+                        </span>
+                        <span class="net-pnl" [ngClass]="getPnLClass(symbol.netPnL)">
+                          Net: {{ formatCurrency(symbol.netPnL) }}
+                        </span>
+                      </div>
+
+                      <!-- Symbol Details -->
+                      <div class="symbol-details" *ngIf="symbol.data">
+                        <div class="detail-row">
+                          <span class="detail-label">Buys:</span>
+                          <span class="detail-value">{{ symbol.data.buys?.length || 0 }}</span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">Sells:</span>
+                          <span class="detail-value">{{ symbol.data.sells?.length || 0 }}</span>
+                        </div>
+                        <div class="detail-row">
+                          <span class="detail-label">Total Trades:</span>
+                          <span class="detail-value">{{ symbol.data.fillCount || 0 }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div class="empty-state" *ngIf="!loading && hierarchyData.length === 0 && !error">
+    <p>No data found for the selected date range. Try expanding your date range.</p>
+  </div>
+</div>
