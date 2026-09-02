@@ -1,0 +1,281 @@
+<div class="config-page">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <h1>⚙️ Configuration Settings</h1>
+      <p class="subtitle">Customize trading parameters and filters</p>
+    </div>
+  </div>
+
+  <!-- Page Content -->
+  <div class="page-body">
+    <!-- Status Message -->
+    <div *ngIf="saveMessage" class="status-message" [class.success]="saveMessage.includes('✅')" [class.error]="saveMessage.includes('❌')">
+      {{ saveMessage }}
+    </div>
+
+    <!-- Configuration Sections -->
+    <form (ngSubmit)="saveConfig()" class="config-form">
+
+      <!-- Technical Analysis Section -->
+      <section class="config-section">
+        <h2 class="section-title">📊 Technical Analysis</h2>
+
+        <div class="form-group">
+          <label for="daysHighLow">Days for High/Low Calculation</label>
+          <div class="input-help">Used for entry price, stop loss, and target calculations</div>
+          <input type="number" [(ngModel)]="config.daysHighLow" name="daysHighLow" 
+                 id="daysHighLow" class="form-control" step="1" min="1" max="365" placeholder="3">
+        </div>
+
+        <div class="form-group">
+          <label for="bufferPercentage">Buffer Percentage (%)</label>
+          <div class="input-help">Applied as (1 ± buffer%) to entry and stop loss prices</div>
+          <div class="input-group">
+            <input type="number" [(ngModel)]="config.bufferPercentage" name="bufferPercentage" 
+                   id="bufferPercentage" class="form-control" step="0.01" min="0" max="1" placeholder="0.4">
+            <span class="input-addon">%</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="targetMultiplier">Target Multiplier</label>
+          <div class="input-help">Target = Entry + (SL Difference × Multiplier)</div>
+          <div class="input-group">
+            <input type="number" [(ngModel)]="config.targetMultiplier" name="targetMultiplier" 
+                   id="targetMultiplier" class="form-control" step="1" min="1" placeholder="4">
+            <span class="input-addon">x</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Risk Management Section -->
+      <section class="config-section">
+        <h2 class="section-title">💰 Risk Management</h2>
+
+        <div class="form-group">
+          <label for="riskAmountInr">Risk Amount per Trade</label>
+          <div class="input-help">Amount risked per trade for quantity calculation</div>
+          <div class="input-group">
+            <span class="input-addon">₹</span>
+            <input type="number" [(ngModel)]="config.riskAmountInr" name="riskAmountInr" 
+                   id="riskAmountInr" class="form-control" step="100" min="0" placeholder="5000">
+          </div>
+        </div>
+      </section>
+
+      <!-- Filtering Section -->
+      <section class="config-section">
+        <h2 class="section-title">🔍 Filtering</h2>
+
+        <div class="form-group">
+          <label for="minimumPrice">Minimum Price (₹)</label>
+          <div class="input-help">Filter out stocks with price below this value</div>
+          <div class="input-group">
+            <input type="number" [(ngModel)]="config.minimumPrice" name="minimumPrice" 
+                   id="minimumPrice" class="form-control" step="1" min="0" placeholder="5">
+            <span class="input-addon">₹</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="topVolumeSymbols">Top Volume Symbols</label>
+          <div class="input-help">Number of top volume symbols to analyze</div>
+          <input type="number" [(ngModel)]="config.topVolumeSymbols" name="topVolumeSymbols" 
+                 id="topVolumeSymbols" class="form-control" step="1" min="1" placeholder="100">
+        </div>
+      </section>
+
+      <!-- Scheduler Section -->
+      <section class="config-section">
+        <h2 class="section-title">🕐 Scheduler Configuration</h2>
+
+        <!-- Place Limit Order Task -->
+        <div class="task-config">
+          <div class="task-header">
+            <div class="task-title-row">
+              <input type="checkbox" [(ngModel)]="config.taskSchedules.placeLimitOrder.enabled" 
+                     name="placeLimitOrderEnabled" id="placeLimitOrderEnabled" class="checkbox-control">
+              <label for="placeLimitOrderEnabled" class="task-title">Place Limit Order</label>
+            </div>
+          </div>
+
+          <div class="task-content" *ngIf="config.taskSchedules.placeLimitOrder.enabled">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="placeLimitOrderScheduleType">Schedule Type</label>
+                <select [(ngModel)]="config.taskSchedules.placeLimitOrder.scheduleType" 
+                        name="placeLimitOrderScheduleType" id="placeLimitOrderScheduleType" class="form-control">
+                  <option value="daily">Daily (at specific time)</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="interval">Interval (every N minutes)</option>
+                </select>
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.placeLimitOrder.scheduleType === 'daily'" class="form-row">
+              <div class="form-group">
+                <label for="placeLimitOrderTime">Time (HH:MM format)</label>
+                <input type="text" [(ngModel)]="config.taskSchedules.placeLimitOrder.dailyTime" 
+                       name="placeLimitOrderTime" id="placeLimitOrderTime" class="form-control" 
+                       placeholder="09:00" pattern="([01]\d|2[0-3]):([0-5]\d)">
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.placeLimitOrder.scheduleType === 'interval'" class="form-row">
+              <div class="form-group">
+                <label for="placeLimitOrderInterval">Interval (minutes)</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.placeLimitOrder.intervalMinutes" 
+                       name="placeLimitOrderInterval" id="placeLimitOrderInterval" class="form-control" 
+                       step="1" min="1" placeholder="30">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <input type="checkbox" [(ngModel)]="config.taskSchedules.placeLimitOrder.retryOnFailure" 
+                       name="placeLimitOrderRetry" id="placeLimitOrderRetry" class="checkbox-control">
+                <label for="placeLimitOrderRetry">Retry on failure</label>
+              </div>
+              <div class="form-group" *ngIf="config.taskSchedules.placeLimitOrder.retryOnFailure">
+                <label for="placeLimitOrderMaxRetries">Max retries</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.placeLimitOrder.maxRetries" 
+                       name="placeLimitOrderMaxRetries" id="placeLimitOrderMaxRetries" class="form-control" 
+                       step="1" min="1" max="10" placeholder="3">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Place Target/Stop Loss Task -->
+        <div class="task-config">
+          <div class="task-header">
+            <div class="task-title-row">
+              <input type="checkbox" [(ngModel)]="config.taskSchedules.placeTargetStopLoss.enabled" 
+                     name="placeTargetStopLossEnabled" id="placeTargetStopLossEnabled" class="checkbox-control">
+              <label for="placeTargetStopLossEnabled" class="task-title">Place Target/Stop Loss Orders</label>
+            </div>
+          </div>
+
+          <div class="task-content" *ngIf="config.taskSchedules.placeTargetStopLoss.enabled">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="placeTargetStopLossScheduleType">Schedule Type</label>
+                <select [(ngModel)]="config.taskSchedules.placeTargetStopLoss.scheduleType" 
+                        name="placeTargetStopLossScheduleType" id="placeTargetStopLossScheduleType" class="form-control">
+                  <option value="daily">Daily (at specific time)</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="interval">Interval (every N minutes)</option>
+                </select>
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.placeTargetStopLoss.scheduleType === 'daily'" class="form-row">
+              <div class="form-group">
+                <label for="placeTargetStopLossTime">Time (HH:MM format)</label>
+                <input type="text" [(ngModel)]="config.taskSchedules.placeTargetStopLoss.dailyTime" 
+                       name="placeTargetStopLossTime" id="placeTargetStopLossTime" class="form-control" 
+                       placeholder="09:30" pattern="([01]\d|2[0-3]):([0-5]\d)">
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.placeTargetStopLoss.scheduleType === 'interval'" class="form-row">
+              <div class="form-group">
+                <label for="placeTargetStopLossInterval">Interval (minutes)</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.placeTargetStopLoss.intervalMinutes" 
+                       name="placeTargetStopLossInterval" id="placeTargetStopLossInterval" class="form-control" 
+                       step="1" min="1" placeholder="30">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <input type="checkbox" [(ngModel)]="config.taskSchedules.placeTargetStopLoss.retryOnFailure" 
+                       name="placeTargetStopLossRetry" id="placeTargetStopLossRetry" class="checkbox-control">
+                <label for="placeTargetStopLossRetry">Retry on failure</label>
+              </div>
+              <div class="form-group" *ngIf="config.taskSchedules.placeTargetStopLoss.retryOnFailure">
+                <label for="placeTargetStopLossMaxRetries">Max retries</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.placeTargetStopLoss.maxRetries" 
+                       name="placeTargetStopLossMaxRetries" id="placeTargetStopLossMaxRetries" class="form-control" 
+                       step="1" min="1" max="10" placeholder="3">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Update Trailing Stop Loss Task -->
+        <div class="task-config">
+          <div class="task-header">
+            <div class="task-title-row">
+              <input type="checkbox" [(ngModel)]="config.taskSchedules.updateTrailingStopLoss.enabled" 
+                     name="updateTrailingStopLossEnabled" id="updateTrailingStopLossEnabled" class="checkbox-control">
+              <label for="updateTrailingStopLossEnabled" class="task-title">Update Trailing Stop Loss</label>
+            </div>
+          </div>
+
+          <div class="task-content" *ngIf="config.taskSchedules.updateTrailingStopLoss.enabled">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="updateTrailingStopLossScheduleType">Schedule Type</label>
+                <select [(ngModel)]="config.taskSchedules.updateTrailingStopLoss.scheduleType" 
+                        name="updateTrailingStopLossScheduleType" id="updateTrailingStopLossScheduleType" class="form-control">
+                  <option value="daily">Daily (at specific time)</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="interval">Interval (every N minutes)</option>
+                </select>
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.updateTrailingStopLoss.scheduleType === 'daily'" class="form-row">
+              <div class="form-group">
+                <label for="updateTrailingStopLossTime">Time (HH:MM format)</label>
+                <input type="text" [(ngModel)]="config.taskSchedules.updateTrailingStopLoss.dailyTime" 
+                       name="updateTrailingStopLossTime" id="updateTrailingStopLossTime" class="form-control" 
+                       placeholder="15:15" pattern="([01]\d|2[0-3]):([0-5]\d)">
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.updateTrailingStopLoss.scheduleType === 'interval'" class="form-row">
+              <div class="form-group">
+                <label for="updateTrailingStopLossInterval">Interval (minutes)</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.updateTrailingStopLoss.intervalMinutes" 
+                       name="updateTrailingStopLossInterval" id="updateTrailingStopLossInterval" class="form-control" 
+                       step="1" min="1" placeholder="30">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <input type="checkbox" [(ngModel)]="config.taskSchedules.updateTrailingStopLoss.retryOnFailure" 
+                       name="updateTrailingStopLossRetry" id="updateTrailingStopLossRetry" class="checkbox-control">
+                <label for="updateTrailingStopLossRetry">Retry on failure</label>
+              </div>
+              <div class="form-group" *ngIf="config.taskSchedules.updateTrailingStopLoss.retryOnFailure">
+                <label for="updateTrailingStopLossMaxRetries">Max retries</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.updateTrailingStopLoss.maxRetries" 
+                       name="updateTrailingStopLossMaxRetries" id="updateTrailingStopLossMaxRetries" class="form-control" 
+                       step="1" min="1" max="10" placeholder="3">
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Action Buttons -->
+      <div class="footer-buttons">
+        <div class="action-buttons">
+          <button type="button" class="btn-secondary" (click)="resetToDefaults()">
+            ↺ Reset to Defaults
+          </button>
+          <button type="button" class="btn-secondary" (click)="goBack()">
+            ← Back
+          </button>
+          <button type="submit" class="btn-primary" [disabled]="isSaving">
+            {{ isSaving ? '💾 Saving...' : '✅ Save Changes' }}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
