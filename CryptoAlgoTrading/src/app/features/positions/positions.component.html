@@ -10,9 +10,9 @@
           <span class="stat-label">Total Positions</span>
           <span class="stat-value">{{ positions.length }}</span>
         </div>
-        <div class="stat-card" [class.profit]="getTotalPnl() > 0" [class.loss]="getTotalPnl() < 0">
+        <div class="stat-card" [class.profit]="getTotalPnlInInr() > 0" [class.loss]="getTotalPnlInInr() < 0">
           <span class="stat-label">Total P&L</span>
-          <span class="stat-value">₹ {{ getTotalPnl() | number: '1.2-2' }}</span>
+          <span class="stat-value">₹ {{ getTotalPnlInInr() | number: '1.2-2' }}</span>
         </div>
       </div>
     </div>
@@ -56,8 +56,24 @@
   </header>
 
   <main class="main-content">
+    <!-- Error message (only for actual errors) -->
     <div *ngIf="error" class="error-message">
       <strong>⚠️ Error:</strong> {{ error }}
+    </div>
+
+    <!-- Status message (for informational messages - no error icon) -->
+    <div *ngIf="statusMessage && !error" class="status-message">
+      {{ statusMessage }}
+    </div>
+
+    <!-- Placement Results Summary Modal (Popup) - Only shown for manual execution -->
+    <div class="order-modal-backdrop" *ngIf="showPlacementResults && placementResults.length > 0" (click)="closePlacementResults()">
+      <div class="order-modal placement-results-modal" (click)="$event.stopPropagation()">
+        <app-placement-results-summary 
+          [results]="placementResults"
+          (closed)="closePlacementResults()">
+        </app-placement-results-summary>
+      </div>
     </div>
 
     <!-- Trailing SL Results Modal -->
@@ -141,14 +157,14 @@
                 </div>
               </div>
             </td>
-            <td class="text-right price-cell">₹ {{ pos.entry_price | number: '1.2-2' }}</td>
-            <td class="text-right price-cell">₹ {{ pos.mark_price | number: '1.2-2' }}</td>
+            <td class="text-right price-cell">₹ {{ convertToInr(pos.entry_price || 0) | number: '1.2-2' }}</td>
+            <td class="text-right price-cell">₹ {{ convertToInr(pos.mark_price || 0) | number: '1.2-2' }}</td>
             <td class="text-right pnl-cell">
               <strong class="pnl-amount" [class.profit]="pos.pnl > 0" [class.loss]="pos.pnl < 0">
-                ₹ {{ pos.pnl | number: '1.2-2' }}
+                ₹ {{ convertToInr(pos.pnl || 0) | number: '1.2-2' }}
               </strong>
             </td>
-            <td class="text-right margin-cell">₹ {{ pos.margin | number: '1.2-2' }}</td>
+            <td class="text-right margin-cell">₹ {{ convertToInr(pos.margin || 0) | number: '1.2-2' }}</td>
           </tr>
         </tbody>
       </table>

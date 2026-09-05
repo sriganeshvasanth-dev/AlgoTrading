@@ -22,15 +22,15 @@
         <span *ngIf="!loading">🔍 Scan Now</span>
         <span *ngIf="loading">⏳ Scanning...</span>
       </button>
-      <button (click)="openLimitOrderModal()" [disabled]="loading || loadingLimitOrderCandidates" class="btn-secondary" style="margin-left:12px">
+      <button (click)="openLimitOrderModal()" [disabled]="loading || loadingLimitOrderCandidates" class="btn-secondary">
         <span *ngIf="!loadingLimitOrderCandidates">📥 Place Limit order</span>
         <span *ngIf="loadingLimitOrderCandidates">⏳ Loading...</span>
       </button>
-      <button (click)="cleanupOrders()" [disabled]="loading || cleaningUpOrders" class="btn-secondary" style="margin-left:12px" title="Cancel stale limit orders that don't have corresponding open positions">
+      <button (click)="cleanupOrders()" [disabled]="loading || cleaningUpOrders" class="btn-secondary" title="Cancel stale limit orders that don't have corresponding open positions">
         <span *ngIf="!cleaningUpOrders">🧹 Cleanup Target Orders</span>
         <span *ngIf="cleaningUpOrders">⏳ Cleaning...</span>
       </button>
-      <label class="filter-label" style="margin-left:20px;">
+      <label class="filter-label">
         <span>Minimum Price (₹)</span>
         <input type="number" [(ngModel)]="minPrice" (ngModelChange)="onPriceFilterChange()" min="0" step="0.1" class="filter-input" />
       </label>

@@ -215,6 +215,23 @@ export class DeltaService {
   }
 
   async getCandles(symbol: string, resolution: string | number, fromSec: number, toSec: number): Promise<any[]> {
+    // Create cache key from parameters
+    const cacheKey = `${symbol}|${resolution}|${Math.floor(fromSec)}|${Math.floor(toSec)}`;
+    const now = Date.now();
+
+    // Check if candles are in cache and not expired
+    if (this.candlesCache[cacheKey]) {
+      const cached = this.candlesCache[cacheKey];
+      if (now - cached.timestamp < this.CANDLES_CACHE_TTL) {
+        this.debug.log(`[Candles Cache] Using cached candles for ${symbol} (${cached.candles.length} candles)`);
+        return cached.candles;
+      } else {
+        // Cache expired, delete it
+        delete this.candlesCache[cacheKey];
+      }
+    }
+
+    // Fetch from API if not cached
     const url = new URL(`${this.baseUrl}/v2/history/candles`);
     url.searchParams.set('symbol', symbol);
     url.searchParams.set('resolution', String(resolution));
@@ -230,7 +247,13 @@ export class DeltaService {
       const json = await res.json();
       const candles = json?.result ?? json?.data ?? json?.candles ?? json;
       // Ensure we always return an array
-      return Array.isArray(candles) ? candles : [];
+      const candleArray = Array.isArray(candles) ? candles : [];
+
+      // Cache the result
+      this.candlesCache[cacheKey] = { timestamp: now, candles: candleArray };
+      this.debug.log(`[Candles Cache] Cached ${candleArray.length} candles for ${symbol} (3-hour TTL)`);
+
+      return candleArray;
     } catch (err) {
       console.error(`❌ Candles fetch error for ${symbol}:`, err);
       return [];
@@ -254,81 +277,33 @@ export class DeltaService {
   async getPositions(): Promise<any[]> {
     await this.ensureConfigLoaded();
     this.debug.log('DeltaService: Fetching positions');
-    const path = '/v2/positions/margined';
 
-    try {
-      for (const host of this.positionsApiHosts) {
-        try {
-          this.debug.log(`DeltaService: Trying host ${host}`);
-          const positionsData = await this.authenticatedRequest('GET', path, undefined, host);
-          this.debug.log('DeltaService: Raw positions response', positionsData);
+    // Try to use cached positions first
+    const cachedPositions = await this.getPositionsWithCache();
 
-          const positions = positionsData?.result ?? positionsData?.positions ?? positionsData;
-          this.debug.log('DeltaService: Extracted positions array', { 
-            isArray: Array.isArray(positions), 
-            length: positions?.length,
-            positions 
-          });
-
-          // Return even if empty array
-          if (Array.isArray(positions)) {
-            if (positions.length === 0) {
-              this.debug.log('DeltaService: No positions found');
-              return [];
-            }
-
-            // Enrich positions with mark price and PnL
-            this.debug.log(`DeltaService: Enriching ${positions.length} positions`);
-            const enrichedPositions = await Promise.all(positions.map(async (p) => {
-              const sizeValue = parseFloat(p.size || 0);
-              const symbol = p.product_symbol || p.symbol;
-
-              this.debug.log(`DeltaService: Processing position ${symbol}`, { size: sizeValue, raw: p });
-
-              const ticker = symbol ? await this.getTicker(symbol) : null;
-              const markPrice = ticker?.mark_price ?? ticker?.close ?? ticker?.last_price ?? 0;
-              const entryPrice = parseFloat(p.entry_price || p.average_entry_price || 0);
-
-              let pnl = 0;
-              let pnlPercentage = 0;
-              if (markPrice > 0 && entryPrice > 0 && sizeValue !== 0) {
-                pnl = (markPrice - entryPrice) * sizeValue;
-                pnlPercentage = ((markPrice - entryPrice) / entryPrice) * 100;
-              }
-
-              return {
-                ...p,
-                symbol: symbol || `Product ${p.product_id}`,
-                size: sizeValue,
-                entry_price: entryPrice,
-                mark_price: parseFloat(markPrice),
-                pnl,
-                pnl_percentage: pnlPercentage,
-                leverage: p.leverage || 1,
-                margin: parseFloat(p.margin || p.allocated_margin || 0),
-                liquidation_price: parseFloat(p.liquidation_price || 0)
-              };
-            }));
-
-            this.debug.log(`DeltaService: Returning ${enrichedPositions.length} enriched positions`, enrichedPositions);
-            return enrichedPositions;
-          }
-        } catch (err: any) {
-          this.debug.error(`DeltaService: Error from host ${host}`, err);
-          const message = String(err?.message || '');
-          if (message.includes('bad_schema')) {
-            return await this.getAllPositionsWithProducts();
-          }
-        }
-      }
-
-      this.debug.log('DeltaService: All hosts failed or returned non-array, trying fallback');
-      return await this.getAllPositionsWithProducts();
-    } catch (error) {
-      this.debug.error('DeltaService: getPositions error', error);
-      // Return empty array instead of throwing
-      return [];
+    // If cache returned non-empty result and is still fresh, use it
+    if (cachedPositions.length > 0) {
+      return cachedPositions;
     }
+
+    // If cache is empty or expired, try fallback
+    this.debug.log('DeltaService: Cache miss or empty, trying fallback');
+    return await this.getAllPositionsWithProducts();
+  }
+
+  /**
+   * Get positions without using cache (for manual refresh)
+   * Clears the cache and fetches fresh data from the API
+   */
+  async getPositionsRefresh(): Promise<any[]> {
+    await this.ensureConfigLoaded();
+    this.debug.log('DeltaService: Fetching positions (refresh - no cache)');
+
+    // Clear cache to force fresh fetch
+    this.clearPositionsCache();
+
+    // Fetch fresh positions from API
+    return await this.getPositionsWithCache();
   }
 
   private async getAllPositionsWithProducts(): Promise<any[]> {
@@ -353,14 +328,16 @@ export class DeltaService {
             const sizeNum = parseFloat(size);
 
             if (Math.abs(sizeNum) > 0) {
-              const ticker = await this.getTicker(product.symbol);
-              const markPrice = ticker?.mark_price ?? ticker?.close ?? ticker?.last_price ?? 0;
+              // Get mark_price directly from position object (no need for getTicker call)
+              const markPrice = parseFloat(p.mark_price || 0);
               const entryPrice = parseFloat(p.entry_price || p.average_entry_price || p.buy_price || 0);
 
-              let pnl = 0;
+              // Get PnL from API response (unrealized_pnl or unrealized_cashflow)
+              const pnl = parseFloat(p.unrealized_pnl || p.unrealized_cashflow || 0);
+
+              // Calculate PnL percentage from entry price and mark price
               let pnlPercentage = 0;
-              if (markPrice > 0 && entryPrice > 0) {
-                pnl = (markPrice - entryPrice) * sizeNum;
+              if (entryPrice > 0 && markPrice > 0) {
                 pnlPercentage = ((markPrice - entryPrice) / entryPrice) * 100;
               }
 
@@ -369,11 +346,11 @@ export class DeltaService {
                 symbol: product.symbol || p.product_symbol || p.symbol || `Product ${productId}`,
                 size: sizeNum,
                 entry_price: entryPrice,
-                mark_price: parseFloat(markPrice),
+                mark_price: markPrice,
                 pnl,
                 pnl_percentage: pnlPercentage,
                 liquidation_price: parseFloat(p.liquidation_price || p.bankruptcy_price || 0),
-                leverage: parseFloat(p.leverage || p.user_leverage || ticker?.leverage || 0),
+                leverage: parseFloat(p.leverage || p.user_leverage || 0),
                 margin: parseFloat(p.margin || p.position_margin || (entryPrice * Math.abs(sizeNum)) / (p.leverage || 1) || 0),
                 product_id: productId
               });
@@ -465,19 +442,35 @@ export class DeltaService {
    * @param productId - The product ID to check for limit orders
    * @returns Array of limit orders with order_type=stop_limit
    */
-  async getLimitOrdersForProduct(productId: number): Promise<any[]> {
+  async getLimitOrdersForProduct(productId: number, symbol?: string): Promise<any[]> {
     try {
-      const path = `/v2/orders?product_ids=${productId}&state=pending&order_types=stop_limit`;
-      this.debug.log(`Fetching limit orders for product ${productId}: ${path}`);
+      // Fetch all pending orders (use batch cache)
+      const allOrders = await this.getAllPendingOrders();
 
-      const response = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
-      const orders = Array.isArray(response) ? response : (response?.result || response?.data || []);
+      // Filter for this specific product by symbol (if provided) or product_id
+      let filteredOrders = allOrders;
+
+      if (symbol) {
+        const symbolUpper = symbol.toUpperCase();
+        filteredOrders = allOrders.filter((order: any) => {
+          const orderSymbol = (order.product_symbol || order.symbol || '').toUpperCase();
+          return orderSymbol === symbolUpper;
+        });
+        this.debug.log(`[Batch] Filtered ${allOrders.length} orders -> ${filteredOrders.length} for symbol ${symbol}`);
+      } else {
+        // Fallback: filter by product_id if symbol not provided
+        filteredOrders = allOrders.filter((order: any) => order.product_id === productId);
+        this.debug.log(`[Batch] Filtered ${allOrders.length} orders -> ${filteredOrders.length} for product_id ${productId}`);
+      }
+
+      // Filter for limit orders (stop_limit orders)
+      const limitOrders = filteredOrders.filter((order: any) => order.order_types === 'stop_limit' || order.order_type === 'stop_limit');
 
       this.debug.log(
-        `getLimitOrdersForProduct returned ${orders?.length || 0} limit orders for product ${productId}`
+        `getLimitOrdersForProduct returned ${limitOrders?.length || 0} limit orders for product ${productId}`
       );
 
-      return orders || [];
+      return limitOrders || [];
     } catch (error: any) {
       this.debug.error(`getLimitOrdersForProduct error for product ${productId}:`, error);
       return [];
@@ -492,16 +485,29 @@ export class DeltaService {
    * @param productId - The product ID to fetch bracket orders for
    * @returns Array of bracket orders matching the criteria
    */
-  async getBracketOrdersForProduct(productId: number): Promise<any[]> {
+  async getBracketOrdersForProduct(productId: number, symbol?: string): Promise<any[]> {
     try {
-      const path = `/v2/orders?product_ids=${productId}&state=pending`;
-      this.debug.log(`Fetching bracket orders for product ${productId}: ${path}`);
+      // Fetch all pending orders (use batch cache)
+      const allOrders = await this.getAllPendingOrders();
 
-      const response = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
-      const allOrders = Array.isArray(response) ? response : (response?.result || response?.data || []);
+      // Filter for this specific product by symbol (if provided) or product_id
+      let filteredOrders = allOrders;
+
+      if (symbol) {
+        const symbolUpper = symbol.toUpperCase();
+        filteredOrders = allOrders.filter((order: any) => {
+          const orderSymbol = (order.product_symbol || order.symbol || '').toUpperCase();
+          return orderSymbol === symbolUpper;
+        });
+        this.debug.log(`[Batch] Filtered ${allOrders.length} orders -> ${filteredOrders.length} for symbol ${symbol}`);
+      } else {
+        // Fallback: filter by product_id if symbol not provided
+        filteredOrders = allOrders.filter((order: any) => order.product_id === productId);
+        this.debug.log(`[Batch] Filtered ${allOrders.length} orders -> ${filteredOrders.length} for product_id ${productId}`);
+      }
 
       // Filter for actual bracket orders: bracket_order === true AND stop_order_type === 'stop_loss_order'
-      const bracketOrders = allOrders.filter((order: any) => {
+      const bracketOrders = filteredOrders.filter((order: any) => {
         return order.bracket_order === true && order.stop_order_type === 'stop_loss_order';
       });
 
@@ -540,11 +546,16 @@ export class DeltaService {
 
         this.debug.log(`Cancelling limit order ${order.id} with payload:`, payload);
         await this.authenticatedRequest('DELETE', '/v2/orders', payload, this.baseUrl);
-        this.debug.log(`✅ Limit order ${order.id} cancelled successfully`);
+        this.debug.log(`[Cancel] Limit order ${order.id} cancelled successfully`);
         cancelledCount++;
       } catch (error: any) {
-        this.debug.error(`❌ Failed to cancel limit order ${order.id}:`, error);
+        this.debug.error(`[Cancel] Failed to cancel limit order ${order.id}:`, error);
       }
+    }
+
+    // Invalidate cache if any cancellations were successful
+    if (cancelledCount > 0) {
+      this.clearStopMarketOrdersCache();
     }
 
     return cancelledCount;
@@ -693,13 +704,18 @@ export class DeltaService {
         client_order_id: clientOrderId
       };
 
-      this.debug.log(`📤 Placing hedge limit order with payload:`, payload);
+      this.debug.log(`[Hedge] Placing hedge limit order with payload:`, payload);
       const result = await this.authenticatedRequest('POST', '/v2/orders', payload, this.baseUrl);
 
       const orderId = result?.id || result?.order_id;
       const message = `Hedge ${hedgeSide.toUpperCase()} limit order placed: ${sizeInContracts} contracts @ Entry: ${entryPrice} (SL: ${stopPrice}, Risk: ₹${riskAmountInr})`;
 
-      this.debug.log(`✅ ${message}`);
+      this.debug.log(`[Hedge] ${message}`);
+
+      // Invalidate caches since we placed a new order
+      this.clearAllPendingOrdersCache();
+      this.clearPositionsCache();
+
       return { 
         success: true, 
         message,
@@ -719,7 +735,7 @@ export class DeltaService {
     try {
       // Fetch all orders without any query parameters
       // Filter by states and product_id in memory
-      let path = '/v2/orders';
+      let path = '/v2/orders?contract_types=perpetual_futures&page_size=5000&order_types=stop_limit&state=pending';
 
       this.debug.log(`Fetching all orders with path: ${path}`);
       const result = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
@@ -729,8 +745,8 @@ export class DeltaService {
       this.debug.log(`getOrders returned ${orders.length} total orders`);
 
       // Filter by state in memory (pending or open)
-      orders = orders.filter((o: any) => o.state === 'pending' || o.state === 'open');
-      this.debug.log(`Filtered to ${orders.length} orders with state=pending,open`);
+      // orders = orders.filter((o: any) => o.state === 'pending' || o.state === 'open');
+      // this.debug.log(`Filtered to ${orders.length} orders with state=pending,open`);
 
       // Filter by product_id in memory if provided
       if (productId) {
@@ -755,6 +771,99 @@ export class DeltaService {
       return null;
     }
   }
+
+  /**
+   * Fetch stop-loss orders for a specific symbol
+   * Uses API endpoint: GET /v2/orders?contract_types=perpetual_futures&page_size=100&order_types=stop_limit
+   * Filters for orders matching:
+   * - product_symbol: {symbol}
+   * - stop_order_type: "stop_loss_order"
+   * - order_type: "limit_order"
+   * 
+   * @param symbol - The symbol to fetch stop-loss orders for (e.g., "BTCUSDT")
+   * @returns Array of matching stop-loss orders
+   */
+  async getStopLossOrdersForSymbol(symbol: string): Promise<any[]> {
+    try {
+      const symbolUpperCase = symbol.toUpperCase();
+      this.debug.log(`Fetching stop-loss orders for symbol: ${symbolUpperCase}`);
+
+      // Use API endpoint for stop_limit orders
+      const pageSize = 10000;
+      const ordersPath = `/v2/orders?contract_types=perpetual_futures&page_size=${pageSize}&order_types=stop_limit`;
+
+      const result = await this.authenticatedRequest('GET', ordersPath, undefined, this.baseUrl);
+
+      // Handle different response formats
+      let orders = Array.isArray(result) ? result : (result?.orders || result?.result || []);
+      this.debug.log(`Total stop_limit orders fetched: ${orders.length}`);
+
+      // Filter for stop-loss orders matching our criteria:
+      // 1. product_symbol matches the target symbol
+      // 2. stop_order_type === "stop_loss_order"
+      // 3. order_type === "limit_order"
+      const stopLossOrders = orders.filter((order: any) => {
+        const orderSymbol = (order.product_symbol || order.symbol || '').toUpperCase();
+        const isStopLossOrder = order.stop_order_type === 'stop_loss_order';
+        const isLimitOrder = order.order_type === 'limit_order';
+
+        const matches = orderSymbol === symbolUpperCase && isStopLossOrder && isLimitOrder;
+
+        if (matches) {
+          this.debug.log(`✓ Found matching stop-loss order:`, {
+            id: order.id,
+            symbol: orderSymbol,
+            stop_order_type: order.stop_order_type,
+            order_type: order.order_type,
+            stop_price: order.stop_price,
+            limit_price: order.limit_price,
+            state: order.state
+          });
+        }
+
+        return matches;
+      });
+
+      this.debug.log(`Filtered to ${stopLossOrders.length} stop-loss orders for ${symbolUpperCase}`);
+      return stopLossOrders;
+    } catch (error: any) {
+      this.debug.error(`Error fetching stop-loss orders for symbol ${symbol}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Cancel a specific stop-loss order by ID
+   * Uses API endpoint: DELETE /v2/orders with payload containing id, client_order_id, and product_id
+   * 
+   /**
+    * @param orderId - The order ID to cancel
+    * @param productId - The product ID associated with the order
+    * @param clientOrderId - Optional client order ID (falls back to generated ID if not provided)
+    * @returns True if cancellation succeeded, false otherwise
+    */
+   async cancelStopLossOrder(orderId: number, productId: number, clientOrderId?: string): Promise<boolean> {
+     try {
+       const payload = {
+         id: orderId,        
+         product_id: productId
+       };
+
+       this.debug.log(`Cancelling stop-loss order ${orderId} with payload:`, payload);
+
+       const result = await this.authenticatedRequest('DELETE', '/v2/orders', payload, this.baseUrl);
+
+       this.debug.log(`[Cancel] Stop-loss order ${orderId} cancelled successfully`, result);
+
+       // Invalidate cache since we just cancelled a stop-loss order
+       this.clearStopMarketOrdersCache();
+
+       return true;
+     } catch (error: any) {
+       this.debug.error(`[Cancel] Failed to cancel stop-loss order ${orderId}:`, error);
+       return false;
+     }
+   }
 
   /**
    * Cancel pending orders ONLY for symbols that don't have current positions
@@ -798,7 +907,7 @@ export class DeltaService {
 
       // Step 3: Filter orders - only cancel if symbol is NOT in positions
       const ordersToCancel = allOrders.filter(order => {
-        const orderSymbol = (order.symbol || '').toUpperCase();
+        const orderSymbol = (order.product_symbol || '').toUpperCase();
         const hasPosition = positionSymbols.has(orderSymbol);
 
         this.debug.log(`Order ${order.id} (${orderSymbol}): hasPosition=${hasPosition}, included=${!hasPosition}`);
@@ -820,7 +929,7 @@ export class DeltaService {
           // Construct payload with id, client_order_id, and product_id
           const payload = {
             id: order.id,
-            client_order_id: order.client_order_id || `order_${order.id}`,
+            //client_order_id: order.client_order_id || `order_${order.id}`,
             product_id: order.product_id
           };
 
@@ -885,7 +994,7 @@ export class DeltaService {
       // Use the optimized endpoint to get limit orders directly
       // GET /v2/orders?contract_types=perpetual_futures&order_types=limit&state=open&page_size=100
       // From response, filter: order_type === 'limit_order' AND stop_order_type === null
-      const pageSize = 100;
+      const pageSize = 5000;
       const ordersPath = `/v2/orders?contract_types=perpetual_futures&order_types=limit&state=open&page_size=${pageSize}`;
 
       let allOrders: any[] = [];
@@ -1202,6 +1311,192 @@ export class DeltaService {
     }
   }
 
+  /**
+   * Fetch ALL pending stop_market orders once and cache them for batch operations
+   * This avoids N API calls (one per symbol) and does local filtering instead
+   */
+  private stopMarketOrdersCache: { timestamp: number; orders: any[] } | null = null;
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly CANDLES_CACHE_TTL = 3 * 60 * 60 * 1000; // 3 hours
+
+  /**
+   * Cache for candles by symbol+resolution+time range
+   * Key: "symbol|resolution|from|to"
+   */
+  private candlesCache: { [key: string]: { timestamp: number; candles: any[] } } = {};
+
+  private async getAllPendingStopMarketOrders(): Promise<any[]> {
+    const now = Date.now();
+
+    // Return cached orders if still valid
+    if (this.stopMarketOrdersCache && (now - this.stopMarketOrdersCache.timestamp) < this.CACHE_TTL) {
+      this.debug.log(`[Cache] Using cached stop_market orders (${this.stopMarketOrdersCache.orders.length} orders)`);
+      return this.stopMarketOrdersCache.orders;
+    }
+
+    // Fetch ALL pending stop_market orders with large page size
+    this.debug.log(`[Batch] Fetching ALL pending stop_market orders...`);
+    const path = `/v2/orders?state=pending&order_types=stop_market&page_size=5000`;
+    const result = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
+
+    const orders = Array.isArray(result) ? result : (result?.orders || result?.result || []);
+    this.debug.log(`[Batch] Fetched ${orders.length} stop_market orders for all symbols`);
+
+    // Cache the orders
+    this.stopMarketOrdersCache = { timestamp: now, orders };
+
+    return orders;
+  }
+
+  /**
+   * Clear the stop_market orders cache (call this after making changes)
+   */
+  clearStopMarketOrdersCache(): void {
+    this.stopMarketOrdersCache = null;
+    this.debug.log(`[Cache] Cleared stop_market orders cache`);
+  }
+
+  /**
+   * Fetch ALL pending orders once and cache them for batch operations
+   * This avoids N API calls (one per product_id) and does local filtering instead
+   */
+  private allPendingOrdersCache: { timestamp: number; orders: any[] } | null = null;
+
+  private async getAllPendingOrders(): Promise<any[]> {
+    const now = Date.now();
+
+    // Return cached orders if still valid
+    if (this.allPendingOrdersCache && (now - this.allPendingOrdersCache.timestamp) < this.CACHE_TTL) {
+      this.debug.log(`[Cache] Using cached all pending orders (${this.allPendingOrdersCache.orders.length} orders)`);
+      return this.allPendingOrdersCache.orders;
+    }
+
+    // Fetch ALL pending orders with large page size
+    this.debug.log(`[Batch] Fetching ALL pending orders...`);
+    const path = `/v2/orders?state=pending&order_types=stop_market&page_size=5000`;
+    const result = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
+
+    const orders = Array.isArray(result) ? result : (result?.orders || result?.result || []);
+    this.debug.log(`[Batch] Fetched ${orders.length} total pending orders for all symbols`);
+
+    // Cache the orders
+    this.allPendingOrdersCache = { timestamp: now, orders };
+
+    return orders;
+  }
+
+  /**
+   * Clear the all pending orders cache (call this after making changes)
+   */
+  clearAllPendingOrdersCache(): void {
+    this.allPendingOrdersCache = null;
+    this.debug.log(`[Cache] Cleared all pending orders cache`);
+  }
+
+  /**
+   * Cache for /v2/positions/margined response (5-minute TTL)
+   * Stores positions data to avoid repeated API calls
+   */
+  private positionsCache: { timestamp: number; positions: any[] } | null = null;
+
+  /**
+   * Enrich raw positions with calculated PnL, percentages, and derived fields
+   * Ensures consistent position data regardless of source (API or cache)
+   */
+  private enrichPositions(rawPositions: any[]): any[] {
+    return rawPositions.map(p => {
+      const size = parseFloat(p.size || 0);
+      const markPrice = parseFloat(p.mark_price || 0);
+      const entryPrice = parseFloat(p.entry_price || p.average_entry_price || 0);
+
+      // Get PnL from API response (unrealized_pnl or unrealized_cashflow)
+      const pnl = parseFloat(p.unrealized_pnl || p.unrealized_cashflow || 0);
+
+      // Calculate PnL percentage from entry price and mark price
+      let pnlPercentage = 0;
+      if (entryPrice > 0 && markPrice > 0) {
+        pnlPercentage = ((markPrice - entryPrice) / entryPrice) * 100;
+      }
+
+      return {
+        ...p,
+        symbol: p.product_symbol || p.symbol || `Product ${p.product_id}`,
+        size: size,
+        entry_price: entryPrice,
+        mark_price: markPrice,
+        pnl,
+        pnl_percentage: pnlPercentage,
+        leverage: p.leverage || 1,
+        margin: parseFloat(p.margin || p.allocated_margin || 0),
+        liquidation_price: parseFloat(p.liquidation_price || 0)
+      };
+    });
+  }
+
+  /**
+   * Get positions from cache or fetch from API
+   * Returns cached positions if available and not expired (5 minutes)
+   */
+  private async getPositionsWithCache(): Promise<any[]> {
+    const now = Date.now();
+
+    // Return cached positions if still valid
+    if (this.positionsCache && (now - this.positionsCache.timestamp) < this.CACHE_TTL) {
+      this.debug.log(`[Cache] Using cached positions (${this.positionsCache.positions.length} positions)`);
+      return this.positionsCache.positions;
+    }
+
+    // Fetch positions from API
+    this.debug.log(`[Batch] Fetching positions from /v2/positions/margined...`);
+    const path = '/v2/positions/margined';
+
+    try {
+      for (const host of this.positionsApiHosts) {
+        try {
+          this.debug.log(`[Batch] Trying host ${host}`);
+          const positionsData = await this.authenticatedRequest('GET', path, undefined, host);
+          this.debug.log('[Batch] Raw positions response', positionsData);
+
+          const positions = positionsData?.result ?? positionsData?.positions ?? positionsData;
+          this.debug.log('[Batch] Extracted positions array', { 
+            isArray: Array.isArray(positions), 
+            length: positions?.length,
+            positions 
+          });
+
+          // Return even if empty array
+          if (Array.isArray(positions)) {
+            // Enrich positions with PnL calculations before caching
+            const enrichedPositions = this.enrichPositions(positions);
+
+            // Cache the enriched positions
+            this.positionsCache = { timestamp: now, positions: enrichedPositions };
+            this.debug.log(`[Cache] Cached ${enrichedPositions.length} enriched positions`);
+            return enrichedPositions;
+          }
+        } catch (hostError: any) {
+          this.debug.log(`[Batch] Host ${host} failed:`, hostError?.message);
+        }
+      }
+
+      // If all hosts failed, return empty array and cache it
+      this.positionsCache = { timestamp: now, positions: [] };
+      return [];
+    } catch (error: any) {
+      this.debug.error(`[Cache] Error fetching positions:`, error);
+      // Return empty array on error
+      return [];
+    }
+  }
+
+  /**
+   * Clear the positions cache (call this after making changes to positions)
+   */
+  clearPositionsCache(): void {
+    this.positionsCache = null;
+    this.debug.log(`[Cache] Cleared positions cache`);
+  }
+
   async updateTrailingStopLoss(position: any): Promise<{ success: boolean; message: string; symbol: string }> {
     try {
       const symbol = position.symbol || position.product_symbol;
@@ -1209,24 +1504,27 @@ export class DeltaService {
         return { success: false, message: 'No symbol found', symbol: 'Unknown' };
       }
 
-      // Step 1: Get product_id from ticker endpoint
-      this.debug.log(`🔍 Step 1: Getting product_id for ${symbol} from ticker endpoint`);
-      const ticker = await this.getTicker(symbol);
-      if (!ticker || !ticker.product_id) {
-        return { success: false, message: 'Could not get product_id from ticker', symbol };
+      // Step 1: Get product_id from position object (already available, no need for ticker call)
+      this.debug.log(`[UpdateTrailingSL] Step 1: Getting product_id for ${symbol} from position`);
+      const productId = position.product_id;
+      if (!productId) {
+        return { success: false, message: 'Could not get product_id from position', symbol };
       }
 
-      const productId = ticker.product_id;
-      this.debug.log(`✅ Got product_id ${productId} for ${symbol}`);
+      this.debug.log(`[UpdateTrailingSL] Got product_id ${productId} for ${symbol}`);
 
-      // Step 2: Query stop_market orders for this product_id
-      // GET /v2/orders?product_ids={{product_id}}&state=pending&order_types=stop_market
-      this.debug.log(`🔍 Step 2: Fetching stop_market orders for product_id ${productId}`);
-      const path = `/v2/orders?product_ids=${productId}&state=pending&order_types=stop_market`;
-      const result = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
+      // Step 2: Get ALL pending stop_market orders and filter locally for this product
+      this.debug.log(`[UpdateTrailingSL] Step 2: Filtering stop_market orders for product_id ${productId}`);
+      const allOrders = await this.getAllPendingStopMarketOrders();
 
-      const orders = Array.isArray(result) ? result : (result?.orders || result?.result || []);
-      this.debug.log(`Found ${orders.length} stop_market orders for ${symbol}`);
+      // Filter orders for this specific product by symbol
+      const orders = allOrders.filter((o: any) => {
+        const orderSymbol = (o.product_symbol || o.symbol || '').toUpperCase();
+        const posSymbol = symbol.toUpperCase();
+        return orderSymbol === posSymbol;
+      });
+
+      this.debug.log(`[UpdateTrailingSL] Found ${orders.length} stop_market orders for ${symbol}`);
 
       if (orders.length === 0) {
         return { 
@@ -1320,21 +1618,24 @@ export class DeltaService {
         stop_price: String(newStopLoss)
       };
 
-      this.debug.log(`📤 Updating stop loss order:`, updatePayload);
+      this.debug.log(`[UpdateTrailingSL] Updating stop loss order:`, updatePayload);
 
       await this.authenticatedRequest('PUT', '/v2/orders', updatePayload, this.baseUrl);
 
+      // Invalidate the cache since we just modified an order
+      this.clearStopMarketOrdersCache();
+
       const positionType = isBuyPosition ? 'BUY' : 'SELL';
-      this.debug.log(`✅ Stop loss updated successfully (${positionType}) from ${currentStopLoss} to ${newStopLoss}`);
+      this.debug.log(`[UpdateTrailingSL] Stop loss updated successfully (${positionType}) from ${currentStopLoss} to ${newStopLoss}`);
 
       // ============================================
       // STEP 6: Place hedge limit order (ONLY if SL was updated)
       // ============================================
       // Place opposite-side limit order: BUY for SELL positions, SELL for BUY positions
-      this.debug.log(`\n🔄 Step 6: Placing hedge limit order for ${symbol}...`);
+      this.debug.log(`\n[UpdateTrailingSL] Step 6: Placing hedge limit order for ${symbol}...`);
 
       // Fetch existing limit orders
-      const existingLimitOrders = await this.getLimitOrdersForProduct(productId);
+      const existingLimitOrders = await this.getLimitOrdersForProduct(productId, symbol);
       this.debug.log(`Found ${existingLimitOrders.length} existing limit orders`, existingLimitOrders.map(o => ({ id: o.id, side: o.side })));
 
       // Cancel existing limit orders before placing new ones
@@ -1549,11 +1850,15 @@ export class DeltaService {
       time_in_force: 'gtc'
     };
 
-    this.debug.log('📤 Creating market order with brackets:', entryPayload);
-    this.debug.log('📤 Creating half-position target order:', targetPayload);
+    this.debug.log('[Bracket] Creating market order with brackets:', entryPayload);
+    this.debug.log('[Bracket] Creating half-position target order:', targetPayload);
 
     const entryOrder = await this.createOrder(entryPayload);
     const targetOrder = await this.createOrder(targetPayload);
+
+    // Invalidate caches since we placed new orders and created a position
+    this.clearAllPendingOrdersCache();
+    this.clearPositionsCache();
 
     return {
       calculations: {
@@ -1721,9 +2026,21 @@ export class DeltaService {
       client_order_id: clientOrderId
     };
 
+    console.log(`[placeLimitBracketOrder] ${input.symbol} - FINAL PAYLOAD:`, {
+      ...payload,
+      side_check: `side='${side}' (type: ${typeof side})`,
+      size_sign: sizeInContracts > 0 ? 'POSITIVE' : 'NEGATIVE',
+      is_buy: side === 'buy',
+      is_sell: side === 'sell'
+    });
+
     this.debug.log('Placing limit bracket order payload:', payload);
 
     const entryOrder = await this.createOrder(payload);
+
+    // Invalidate caches since we placed a new order and created a position
+    this.clearAllPendingOrdersCache();
+    this.clearPositionsCache();
 
     return {
       calculations: {
@@ -1853,13 +2170,11 @@ export class DeltaService {
 
       this.debug.log(`🔄 Moving SL to entry price for ${symbol}: Entry=${entryPrice}`);
 
-      // Step 1: Get product_id from ticker
-      const ticker = await this.getTicker(symbol);
-      if (!ticker || !ticker.product_id) {
-        return { success: false, message: 'Could not get product_id from ticker', symbol };
+      // Step 1: Get product_id from position object (already available, no need for ticker call)
+      const productId = position.product_id;
+      if (!productId) {
+        return { success: false, message: 'Could not get product_id from position', symbol };
       }
-
-      const productId = ticker.product_id;
 
       // Step 2: Find the stop loss order
       const path = `/v2/orders?product_ids=${productId}&state=pending&order_types=stop_market`;

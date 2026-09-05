@@ -439,28 +439,28 @@ app-nav-menu .menu-overlay {
 }
 
 .dashboard .btn-secondary {
-  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
-  color: white;
-  border: none;
+  background: white;
+  color: var(--primary);
+  border: 2px solid var(--primary);
   padding: var(--spacing-md) var(--spacing-xl);
   border-radius: var(--radius-md);
-  font-weight: 700;
+  font-weight: 600;
   font-size: var(--font-size-base);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-sm);
   transition: all 0.2s ease;
-  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+  box-shadow: var(--shadow-sm);
   min-width: 180px;
   justify-content: center;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
 }
 
 .dashboard .btn-secondary:hover:not(:disabled) {
+  background: var(--primary-light);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
+  box-shadow: var(--shadow-md);
 }
 
 .dashboard .btn-secondary:disabled {

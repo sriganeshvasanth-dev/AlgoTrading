@@ -5,8 +5,9 @@ import { DeltaService } from '../../core/services/delta.service';
 import { ConfigService } from '../../core/services/config.service';
 import { TaskSchedulerService } from '../../core/services/task-scheduler.service';
 import { TaskExecutorService } from '../../core/services/task-executor.service';
-import { TargetStopLossManagerService } from '../../core/services/target-stoploss-manager.service';
+import { TargetStopLossManagerService, TargetStopLossResult } from '../../core/services/target-stoploss-manager.service';
 import { LoggingService } from '../../core/services/logging.service';
+import { PlacementResultsSummaryComponent } from './placement-results-summary.component.js';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -42,14 +43,16 @@ type AppConfig = {
 @Component({
   selector: 'app-positions',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PlacementResultsSummaryComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './positions.component.html',
+  styleUrls: ['./positions.component.css']
 })
 export class PositionsComponent implements OnInit, OnDestroy {
   positions: Position[] = [];
   loading = false;
   error: string | null = null;
+  statusMessage: string | null = null; // For informational messages (not errors)
 
   // Trailing SL feature state
   trailingSLLoading = false;
@@ -59,6 +62,8 @@ export class PositionsComponent implements OnInit, OnDestroy {
 
   // Placing targets state
   placingTargetsLoading = false;
+  placementResults: TargetStopLossResult[] = [];
+  showPlacementResults = false;
 
   // Scheduler state
   private schedulerInterval: any = null;
@@ -208,7 +213,8 @@ export class PositionsComponent implements OnInit, OnDestroy {
     this.cd.markForCheck();
 
     try {
-      const data = await this.deltaService.getPositions();
+      // Use getPositionsRefresh() to bypass cache for manual refresh
+      const data = await this.deltaService.getPositionsRefresh();
       this.positions = data || [];
       this.error = null;
     } catch (err: any) {
@@ -224,6 +230,29 @@ export class PositionsComponent implements OnInit, OnDestroy {
     return this.positions.reduce((sum: number, pos: Position) => sum + pos.pnl, 0);
   }
 
+  /**
+   * Get USD to INR conversion rate from config
+   */
+  private getUsdToInrRate(): number {
+    const config = this.configService.getConfig();
+    return config.usdToInr || 85; // Default to 85 if not set
+  }
+
+  /**
+   * Convert USD value to INR
+   */
+  convertToInr(usdValue: number): number {
+    return usdValue * this.getUsdToInrRate();
+  }
+
+  /**
+   * Get total PnL in INR (converted from USD)
+   */
+  getTotalPnlInInr(): number {
+    const totalPnlInUsd = this.getTotalPnl();
+    return this.convertToInr(totalPnlInUsd);
+  }
+
 
   async placeTargetsAndStopLoss(): Promise<void> {
     if (!this.isScheduledExecution) {
@@ -236,6 +265,8 @@ export class PositionsComponent implements OnInit, OnDestroy {
     }
 
     this.placingTargetsLoading = true;
+    this.showPlacementResults = false;
+    this.placementResults = [];
     this.error = null;
     this.cd.markForCheck();
 
@@ -250,29 +281,53 @@ export class PositionsComponent implements OnInit, OnDestroy {
       const results = await this.targetStopLossManager.placeTargetsAndStopLossForAllPositions();
 
       const successCount = results.filter(r => r.success).length;
-      const failCount = results.filter(r => !r.success).length;
+      const skippedCount = results.filter(r => !r.success && r.message?.includes('Skipped')).length;
+      const actualFailCount = results.filter(r => !r.success && !r.message?.includes('Skipped')).length;
+
+      // Store results for display in summary component (popup)
+      this.placementResults = results;
+
+      // Only show popup if this was manual execution (not from scheduler)
+      this.showPlacementResults = !this.isScheduledExecution;
 
       // Record the scheduled execution result
       if (this.isScheduledExecution) {
         this.logger.info('Recording scheduled task results');
         this.taskScheduler.recordTaskResults('place-target-stopLoss', {
-          summary: `Placed target & stop loss for ${successCount}/${results.length} positions`,
+          summary: `Placed target & stop loss for ${successCount}/${results.length} positions (${skippedCount} skipped, ${actualFailCount} failed)`,
           total: results.length,
           succeeded: successCount,
-          failed: failCount,
+          skipped: skippedCount,
+          failed: actualFailCount,
           results: results
         });
       }
 
-      // Show results to user
+      // Show summary to user with detailed breakdown
       this.logger.info(`Target & stop loss placement completed:`, results);
-      this.error = `Placed target & stop loss for ${successCount}/${results.length} positions`;
+
+      // Build comprehensive status message (always show this in header, not popup)
+      let statusMsg = '';
+      if (successCount > 0) {
+        statusMsg += `✅ Successfully placed orders for ${successCount} position(s)`;
+      }
+      if (skippedCount > 0) {
+        statusMsg += `${statusMsg ? ' | ' : ''}⏭️ Skipped ${skippedCount} position(s) with existing orders`;
+      }
+      if (actualFailCount > 0) {
+        statusMsg += `${statusMsg ? ' | ' : ''}❌ Failed to place orders for ${actualFailCount} position(s)`;
+      }
+
+      this.statusMessage = statusMsg || 'No positions were processed';
 
       // Update UI with results
       this.cd.markForCheck();
     } catch (err: any) {
       this.error = err?.message || 'Failed to place target & stop loss orders';
+      this.statusMessage = null;
       this.logger.error('Error in placeTargetsAndStopLoss:', err);
+      this.placementResults = [];
+      this.showPlacementResults = false;
     } finally {
       this.placingTargetsLoading = false;
       this.isScheduledExecution = false;
@@ -407,5 +462,24 @@ export class PositionsComponent implements OnInit, OnDestroy {
 
   isUpdating(symbol: string): boolean {
     return this.updatingPositions.has(symbol);
+  }
+
+  /**
+   * Calculate summary stats from placement results
+   */
+  getPlacementSummary(): { success: number; skipped: number; failed: number } {
+    return {
+      success: this.placementResults.filter(r => r.success).length,
+      skipped: this.placementResults.filter(r => !r.success && r.message?.includes('Skipped')).length,
+      failed: this.placementResults.filter(r => !r.success && !r.message?.includes('Skipped')).length
+    };
+  }
+
+  /**
+   * Close the placement results summary
+   */
+  closePlacementResults(): void {
+    this.showPlacementResults = false;
+    this.cd.markForCheck();
   }
 }

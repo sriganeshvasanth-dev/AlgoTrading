@@ -103,7 +103,7 @@ export class TargetStopLossManagerService {
 
     try {
       // Step 1: Check if target/stop loss orders already exist for this product
-      const existingOrders = await this.checkExistingOrders(productId);
+      const existingOrders = await this.checkExistingOrders(productId, symbol);
       const hasExistingOrders = existingOrders && existingOrders.length > 0;
 
       this.logger.debug(`Existing orders for ${symbol}:`, {
@@ -336,13 +336,13 @@ export class TargetStopLossManagerService {
    * 
    * CRITICAL: When bracket orders exist, we MUST SKIP placement to avoid duplication
    */
-  private async checkExistingOrders(productId: number): Promise<any[]> {
+  private async checkExistingOrders(productId: number, symbol?: string): Promise<any[]> {
     try {
-      this.logger.debug(`Checking existing bracket orders for product_id: ${productId}`);
+      this.logger.debug(`Checking existing bracket orders for product_id: ${productId}, symbol: ${symbol || 'N/A'}`);
 
       // Use getBracketOrdersForProduct to check for actual bracket orders only
       // This filters for: bracket_order === true AND stop_order_type === 'stop_loss_order'
-      const bracketOrders = await this.deltaService.getBracketOrdersForProduct(productId);
+      const bracketOrders = await this.deltaService.getBracketOrdersForProduct(productId, symbol);
 
       this.logger.debug(`Got response from getBracketOrdersForProduct for product ${productId}:`, {
         ordersCount: bracketOrders?.length || 0
