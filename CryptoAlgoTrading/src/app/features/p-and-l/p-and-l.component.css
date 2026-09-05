@@ -7,6 +7,12 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* Light theme for P&L container */
+:host-context([data-theme="light"]) .pnl-container {
+  background: #ffffff;
+  color: #333333;
+}
+
 /* Header */
 .pnl-header {
   margin-bottom: 30px;
@@ -14,6 +20,12 @@
   padding: 20px 30px;
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Light theme for header */
+:host-context([data-theme="light"]) .pnl-header {
+  background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .pnl-header h1 {
@@ -29,6 +41,198 @@
   color: #b0c4de;
 }
 
+/* ===== LIGHT THEME OVERRIDES ===== */
+:host-context([data-theme="light"]) .pnl-container {
+  background: #ffffff;
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .date-range-section {
+  background: #f5f5f5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+:host-context([data-theme="light"]) .date-input-group label {
+  color: #666666;
+}
+
+:host-context([data-theme="light"]) .date-input {
+  background: #ffffff;
+  border: 1px solid #ddd;
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .date-input:hover {
+  border-color: #bbb;
+}
+
+:host-context([data-theme="light"]) .date-input:focus {
+  box-shadow: 0 0 4px rgba(42, 82, 152, 0.2);
+}
+
+:host-context([data-theme="light"]) .btn {
+  color: #fff;
+}
+
+:host-context([data-theme="light"]) .btn-primary {
+  background: #2a5298;
+}
+
+:host-context([data-theme="light"]) .btn-primary:hover {
+  background: #1e3c72;
+}
+
+:host-context([data-theme="light"]) .btn-secondary {
+  background: #666;
+}
+
+:host-context([data-theme="light"]) .btn-secondary:hover {
+  background: #555;
+}
+
+:host-context([data-theme="light"]) .summary-cards {
+  background: #f5f5f5;
+  color: #333333;
+  border-color: #ddd;
+}
+
+:host-context([data-theme="light"]) .summary-cards:focus {
+  border-color: #2a5298;
+}
+
+:host-context([data-theme="light"]) .card-title {
+  color: #666666;
+}
+
+:host-context([data-theme="light"]) .card-value {
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .card-footer {
+  background: #f0f0f0;
+  color: #666666;
+  border-color: #ddd;
+}
+
+:host-context([data-theme="light"]) .table {
+  background: #ffffff;
+  color: #333333;
+  border-color: #ddd;
+}
+
+:host-context([data-theme="light"]) .table-header {
+  background: linear-gradient(135deg, #f5f5f5 0%, #f0f0f0 100%);
+  color: #333333;
+  border-color: #ddd;
+}
+
+:host-context([data-theme="light"]) .table-header-cell {
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+:host-context([data-theme="light"]) .table-cell {
+  color: #333333;
+  border-color: #f0f0f0;
+}
+
+:host-context([data-theme="light"]) .table-loading {
+  background: #f5f5f5;
+  color: #999;
+}
+
+:host-context([data-theme="light"]) .checkbox-input {
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .table-positive {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+  border-color: rgba(76, 175, 80, 0.2);
+  color: #2d7d2d;
+}
+
+:host-context([data-theme="light"]) .table-negative {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.1) 0%, rgba(244, 67, 54, 0.05) 100%);
+  border-color: rgba(244, 67, 54, 0.2);
+  color: #c62828;
+}
+
+:host-context([data-theme="light"]) .section-divider {
+  background: #ddd;
+}
+
+:host-context([data-theme="light"]) .today-pnl-card-box {
+  background: linear-gradient(135deg, #f5f5f5 0%, #f0f0f0 100%);
+  border: 1px solid #ddd;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 0 1px rgba(0, 0, 0, 0.05) inset;
+}
+
+:host-context([data-theme="light"]) .today-pnl-card-box.profit {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(76, 175, 80, 0.02) 100%);
+  border-color: rgba(76, 175, 80, 0.3);
+  box-shadow: 0 8px 24px rgba(76, 175, 80, 0.1), 0 0 1px rgba(76, 175, 80, 0.2) inset;
+}
+
+:host-context([data-theme="light"]) .today-pnl-card-box.loss {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.05) 0%, rgba(244, 67, 54, 0.02) 100%);
+  border-color: rgba(244, 67, 54, 0.3);
+  box-shadow: 0 8px 24px rgba(244, 67, 54, 0.1), 0 0 1px rgba(244, 67, 54, 0.2) inset;
+}
+
+:host-context([data-theme="light"]) .today-card-header {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+:host-context([data-theme="light"]) .today-card-title {
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .pnl-metric {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .metric-label {
+  color: #666666;
+}
+
+:host-context([data-theme="light"]) .metric-value {
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .quick-filters {
+  margin-top: 15px;
+}
+
+:host-context([data-theme="light"]) .data-source-section {
+  background: #f5f5f5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+:host-context([data-theme="light"]) .data-source-selector label {
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .radio-label {
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .btn-outline {
+  background: transparent;
+  border: 1px solid #ddd;
+  color: #333333;
+}
+
+:host-context([data-theme="light"]) .btn-outline:hover {
+  background: #f5f5f5;
+  border-color: #bbb;
+  color: #333333;
+}
+
 /* Date Range Section */
 .date-range-section {
   background: #242424;
@@ -41,7 +245,7 @@
 .date-inputs {
   display: flex;
   gap: 15px;
-  margin-bottom: 15px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
   align-items: flex-end;
 }
@@ -203,14 +407,16 @@
 }
 
 .summary-card {
+  position: static;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 15px;
   background: #242424;
   padding: 20px;
   border-radius: 8px;
   border-left: 4px solid #2a5298;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  min-height: auto;
 }
 
 .summary-item {
@@ -246,6 +452,103 @@
 
 .summary-item .value.fees {
   color: #ff9800;
+}
+
+/* Today's P&L Card - Professional Box Version */
+.today-pnl-card-box {
+  background: linear-gradient(135deg, #1f1f1f 0%, #242424 100%);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #404040;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  min-width: 280px;
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.today-pnl-card-box.profit {
+  border-color: rgba(76, 175, 80, 0.3);
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(76, 175, 80, 0.02) 100%);
+  box-shadow: 0 8px 24px rgba(76, 175, 80, 0.15), 0 0 1px rgba(76, 175, 80, 0.3) inset;
+}
+
+.today-pnl-card-box.loss {
+  border-color: rgba(244, 67, 54, 0.3);
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.05) 0%, rgba(244, 67, 54, 0.02) 100%);
+  box-shadow: 0 8px 24px rgba(244, 67, 54, 0.15), 0 0 1px rgba(244, 67, 54, 0.3) inset;
+}
+
+.today-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.today-card-icon {
+  font-size: 24px;
+  display: inline-block;
+}
+
+.today-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e0e0e0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.today-card-body {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.pnl-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #a0a0a0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metric-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e0e0e0;
+  line-height: 1.2;
+}
+
+.metric-value.profit {
+  color: #66bb6a;
+}
+
+.metric-value.loss {
+  color: #ff6b6b;
+}
+
+.metric-value.fees {
+  color: #ff9800;
+}
+
+.metric-value.net-pnl {
+  font-size: 18px;
+  font-weight: 800;
 }
 
 /* Loading Section */

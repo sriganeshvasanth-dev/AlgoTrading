@@ -1,3 +1,4 @@
+// Positions component - displays open positions and allows position management
 import { Component, OnInit, ChangeDetectionStrategy, ChangeDetectorRef, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -64,6 +65,10 @@ export class PositionsComponent implements OnInit, OnDestroy {
   placingTargetsLoading = false;
   placementResults: TargetStopLossResult[] = [];
   showPlacementResults = false;
+
+  // Move SL to Entry state
+  moveSlToEntryResults: any[] = [];
+  showMoveSlToEntryResults = false;
 
   // Scheduler state
   private schedulerInterval: any = null;
@@ -453,6 +458,12 @@ export class PositionsComponent implements OnInit, OnDestroy {
     this.cd.markForCheck();
   }
 
+  closeMoveSlToEntryResults(): void {
+    this.showMoveSlToEntryResults = false;
+    this.moveSlToEntryResults = [];
+    this.cd.markForCheck();
+  }
+
   getRowClass(pos: Position): string {
     if (this.updatingPositions.has(pos.symbol)) {
       return 'updating';
@@ -481,5 +492,197 @@ export class PositionsComponent implements OnInit, OnDestroy {
   closePlacementResults(): void {
     this.showPlacementResults = false;
     this.cd.markForCheck();
+  }
+
+  /**
+   * Move stop loss to entry price for positions without standalone limit orders
+   * Fetches all pending standalone limit orders ONCE, then checks each position against that list
+   * For positions without limit orders, updates their stop loss to entry price using bufferMultiplier
+   * This is more efficient than checking each symbol individually
+   */
+  async moveStopLossToEntry(): Promise<void> {
+    const startTime = performance.now();
+    this.loading = true;
+    this.error = '';
+    this.statusMessage = 'Checking positions and updating stop loss...';
+    this.cd.markForCheck();
+
+    try {
+      // Fetch all open positions, pending standalone limit orders, and pending stop market orders in parallel
+      const [allPositions, standaloneOrders, stopMarketOrders] = await Promise.all([
+        this.deltaService.getPositions(),
+        this.deltaService.getAllPendingStandaloneLimitOrders(),
+        this.deltaService.getAllPendingStopMarketOrders()
+      ]);
+
+      console.log('[MoveSlToEntry] Fetched ' + allPositions.length + ' positions, ' + standaloneOrders.length + ' standalone limit orders, and ' + stopMarketOrders.length + ' stop market orders');
+
+      if (!allPositions || allPositions.length === 0) {
+        this.statusMessage = 'No open positions found';
+        console.log('[MoveSlToEntry] No open positions found');
+        return;
+      }
+
+      const positionsWithoutLimitOrders: any[] = [];
+      const positionsWithLimitOrders: any[] = [];
+
+      // Check each position for standalone limit orders using the pre-fetched list
+      for (const position of allPositions) {
+        const symbol = position.product_symbol || position.symbol;
+        const hasLimit = this.deltaService.hasStandaloneLimitOrderBySymbol(symbol, standaloneOrders);
+
+        if (hasLimit) {
+          positionsWithLimitOrders.push(position);
+        } else {
+          positionsWithoutLimitOrders.push(position);
+        }
+      }
+
+      // Update stop loss for positions without limit orders
+      if (positionsWithoutLimitOrders.length > 0) {
+        const updateResults: any[] = [];
+        for (const position of positionsWithoutLimitOrders) {
+          const result = await this.updateStopLossToEntry(position, stopMarketOrders);
+          updateResults.push(result);
+        }
+
+        // Store results for display
+        this.moveSlToEntryResults = updateResults;
+        this.showMoveSlToEntryResults = true;
+
+      } else {
+        console.log('[MoveSlToEntry] All positions have standalone limit orders! OK');
+      }
+
+      console.log('[MoveSlToEntry] ===========================================');
+
+      const endTime = performance.now();
+      const successCount = positionsWithoutLimitOrders.filter(p => p).length;
+      this.statusMessage = 'Updated stop loss for ' + successCount + ' positions (checked ' + allPositions.length + ' positions in ' + Math.round(endTime - startTime) + 'ms)';
+      console.log('[MoveSlToEntry] Completed in ' + Math.round(endTime - startTime) + 'ms');
+
+    } catch (err: any) {
+      this.error = err?.message || 'Failed to check positions';
+      console.error('[MoveSlToEntry] Error:', err);
+    } finally {
+      this.loading = false;
+      this.cd.markForCheck();
+    }
+  }
+
+  /**
+   * Update stop loss to entry price for a single position
+   * Buy StopLoss price = Math.Max(Entry Price (1 + bufferMultiplier%), prev3Low(1 - bufferMultiplier%))
+   * Sell StopLoss price = Math.Min(Entry Price (1 - bufferMultiplier%), prev3High(1 + bufferMultiplier%))
+   */
+  private async updateStopLossToEntry(position: any, stopMarketOrders: any[]): Promise<any> {
+    const symbol = position.product_symbol || position.symbol;
+
+    try {
+      console.log('[MoveSlToEntry] Updating stop loss for ' + symbol);
+
+      // Determine position side
+      const positionSize = parseFloat(position.size || 0);
+      const isBuyPosition = positionSize > 0;
+      const positionType = isBuyPosition ? 'BUY' : 'SELL';
+
+      // Get entry price and buffer configuration
+      const entryPrice = parseFloat(position.entry_price || 0);
+      const bufferPercentage = this.configService.getConfigValue('bufferPercentage');
+      const bufferMultiplier = 1 + (bufferPercentage / 100);
+
+      // Fetch 3-day candle data to get prev3High and prev3Low
+      const now = Date.now();
+      const toSec = Math.floor(now / 1000);
+      const fromSec = toSec - 60 * 60 * 24 * 4; // Get 4 days of data to ensure we have 3 days
+
+      const candleData = await this.deltaService.getCandles(symbol, '1d', fromSec, toSec);
+
+      const candleArr = (Array.isArray(candleData) ? candleData : (candleData as any)?.candles ?? []) as any[];
+      if (!candleArr || candleArr.length < 2) {
+        console.log('[MoveSlToEntry] Insufficient candle data, using entry price only');
+        // Fallback to entry price only if candle data is insufficient
+        let slPrice: number;
+        const bufferDecimal = bufferPercentage / 100;
+        if (isBuyPosition) {
+          slPrice = Math.round(entryPrice * (1 + bufferDecimal) * 100) / 100;
+        } else {
+          slPrice = Math.round(entryPrice * (1 - bufferDecimal) * 100) / 100;
+        }
+
+        console.log('[MoveSlToEntry] ' + symbol + ' (' + positionType + '): Entry=' + entryPrice + ', New SL=' + slPrice + ' (no candle data)');
+
+        return await this.deltaService.updateStopLossToEntryPrice(position, slPrice, stopMarketOrders);
+      }
+
+      // Sort candles by time and get the previous 3 days (excluding current day)
+      candleArr.sort((a: any, b: any) => {
+        const aTime = Array.isArray(a) ? a[0] : (a.time ?? a.t ?? 0);
+        const bTime = Array.isArray(b) ? b[0] : (b.time ?? b.t ?? 0);
+        return aTime - bTime;
+      });
+
+      // Get previous 3 days (exclude the latest/current candle)
+      const prev3Candles = candleArr.length > 3 ? candleArr.slice(-4, -1) : candleArr.slice(0, -1);
+
+      if (prev3Candles.length === 0) {
+        console.log('[MoveSlToEntry] Insufficient historical candle data');
+        let slPrice: number;
+        const bufferDecimal = bufferPercentage / 100;
+        if (isBuyPosition) {
+          slPrice = Math.round(entryPrice * (1 + bufferDecimal) * 100) / 100;
+        } else {
+          slPrice = Math.round(entryPrice * (1 - bufferDecimal) * 100) / 100;
+        }
+        return await this.deltaService.updateStopLossToEntryPrice(position, slPrice, stopMarketOrders);
+      }
+
+      // Extract high and low from candles
+      const prev3High = Math.max(...prev3Candles.map((c: any) => parseFloat(Array.isArray(c) ? c[2] : (c.high ?? c.h ?? 0))));
+      const prev3Low = Math.min(...prev3Candles.map((c: any) => parseFloat(Array.isArray(c) ? c[3] : (c.low ?? c.l ?? 0))));
+
+      console.log('[MoveSlToEntry] ' + symbol + ' - Candle data: High=' + prev3High + ', Low=' + prev3Low);
+
+      // Calculate stop loss using the new formula
+      let slPrice: number;
+      if (isBuyPosition) {
+        // Buy StopLoss price = Math.Max(Entry Price (1 + bufferMultiplier%), prev3Low(1 - bufferMultiplier%))
+        const bufferDecimal = bufferPercentage / 100;
+        const slFromEntry = entryPrice * (1 + bufferDecimal);
+        const slFromLow = prev3Low * (1 - bufferDecimal);
+        slPrice = Math.max(slFromEntry, slFromLow);
+        console.log('[MoveSlToEntry] ' + symbol + ' (BUY): Entry=' + entryPrice + ', SL from Entry=' + slFromEntry + ', SL from Low=' + slFromLow);
+      } else {
+        // Sell StopLoss price = Math.Min(Entry Price (1 - bufferMultiplier%), prev3High(1 + bufferMultiplier%))
+        const bufferDecimal = bufferPercentage / 100;
+        const slFromEntry = entryPrice * (1 - bufferDecimal);
+        const slFromHigh = prev3High * (1 + bufferDecimal);
+        slPrice = Math.min(slFromEntry, slFromHigh);
+        console.log('[MoveSlToEntry] ' + symbol + ' (SELL): Entry=' + entryPrice + ', SL from Entry=' + slFromEntry + ', SL from High=' + slFromHigh);
+      }
+
+      // Round to 2 decimal places to avoid floating-point precision issues
+      slPrice = Math.round(slPrice * 100) / 100;
+      console.log('[MoveSlToEntry] ' + symbol + ' (' + positionType + '): Final SL=' + slPrice);
+
+      // Call service to update the stop loss order
+      const result = await this.deltaService.updateStopLossToEntryPrice(position, slPrice, stopMarketOrders);
+
+      return {
+        success: result?.success !== false,
+        symbol: symbol,
+        message: result?.message || 'Stop loss updated successfully',
+        oldPrice: result?.oldPrice,
+        newPrice: slPrice
+      };
+
+    } catch (err: any) {
+      console.error('[MoveSlToEntry] Error updating ' + symbol + ':', err);
+      return {
+        success: false,
+        symbol: symbol,
+        message: err?.message || 'Failed to update stop loss'
+      };
+    }
   }
 }

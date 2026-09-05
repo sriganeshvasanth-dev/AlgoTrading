@@ -30,10 +30,6 @@
         <span *ngIf="!cleaningUpOrders">🧹 Cleanup Target Orders</span>
         <span *ngIf="cleaningUpOrders">⏳ Cleaning...</span>
       </button>
-      <label class="filter-label">
-        <span>Minimum Price (₹)</span>
-        <input type="number" [(ngModel)]="minPrice" (ngModelChange)="onPriceFilterChange()" min="0" step="0.1" class="filter-input" />
-      </label>
     </div>
   </header>
 

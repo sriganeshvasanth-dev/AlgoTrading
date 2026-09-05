@@ -359,7 +359,7 @@ export class NavMenuComponent implements OnInit {
     if (this.isDarkTheme) {
       document.documentElement.setAttribute('data-theme', 'dark');
     } else {
-      document.documentElement.removeAttribute('data-theme');
+      document.documentElement.setAttribute('data-theme', 'light');
     }
   }
 }

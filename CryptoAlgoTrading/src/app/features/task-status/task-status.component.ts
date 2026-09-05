@@ -153,9 +153,43 @@ import { takeUntil } from 'rxjs/operators';
                   </div>
                 </div>
 
-                <!-- For object results -->
+                <!-- For object results with nested results array (Move SL to Entry, Cleanup Target Orders) -->
                 <div *ngIf="!isArrayResults(selectedTaskForDetails.results)" class="object-results">
-                  <pre>{{ selectedTaskForDetails.results | json }}</pre>
+                  <!-- Display summary from object properties -->
+                  <div class="result-summary" *ngIf="selectedTaskForDetails.results.total || selectedTaskForDetails.results.succeeded">
+                    <div class="summary-item">
+                      <span class="summary-label">Total:</span>
+                      <span class="summary-value">{{ selectedTaskForDetails.results.total }}</span>
+                    </div>
+                    <div class="summary-item" *ngIf="selectedTaskForDetails.results.succeeded !== undefined">
+                      <span class="summary-label success">Success:</span>
+                      <span class="summary-value success">{{ selectedTaskForDetails.results.succeeded }}</span>
+                    </div>
+                    <div class="summary-item" *ngIf="selectedTaskForDetails.results.failed !== undefined">
+                      <span class="summary-label failed">Failed:</span>
+                      <span class="summary-value failed">{{ selectedTaskForDetails.results.failed }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Display nested results array if available -->
+                  <div class="result-items" *ngIf="isArrayResults(selectedTaskForDetails.results.results)">
+                    <div *ngFor="let item of selectedTaskForDetails.results.results" 
+                         class="result-item" [ngClass]="item.success ? 'success' : 'failed'">
+                      <div class="result-item-header">
+                        <span class="result-icon">{{ item.success ? '✓' : '✗' }}</span>
+                        <span class="result-symbol">{{ item.symbol }}</span>
+                        <span class="result-type" *ngIf="item.type">[{{ item.type }}]</span>
+                      </div>
+                      <div class="result-item-body">
+                        <p class="result-message">{{ item.message }}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Fallback to JSON display if no results array -->
+                  <div *ngIf="!isArrayResults(selectedTaskForDetails.results.results)">
+                    <pre>{{ selectedTaskForDetails.results | json }}</pre>
+                  </div>
                 </div>
               </div>
             </div>

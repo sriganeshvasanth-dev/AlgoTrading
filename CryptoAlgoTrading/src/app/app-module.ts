@@ -21,7 +21,7 @@ import { ConfigComponent } from './features/config/config.component';
     ConfigComponent
   ],
   providers: [
-    provideBrowserGlobalErrorListeners(),
+    provideBrowserGlobalErrorListeners()
   ],
   bootstrap: [App]
 })

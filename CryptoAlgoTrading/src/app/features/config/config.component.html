@@ -260,6 +260,126 @@
             </div>
           </div>
         </div>
+
+        <!-- Cleanup Target Orders Task -->
+        <div class="task-config">
+          <div class="task-header">
+            <div class="task-title-row">
+              <input type="checkbox" [(ngModel)]="config.taskSchedules.cleanupTargetOrders.enabled" 
+                     name="cleanupTargetOrdersEnabled" id="cleanupTargetOrdersEnabled" class="checkbox-control">
+              <label for="cleanupTargetOrdersEnabled" class="task-title">Cleanup Target Orders</label>
+            </div>
+          </div>
+
+          <div class="task-content" *ngIf="config.taskSchedules.cleanupTargetOrders.enabled">
+            <div class="task-description">
+              <p>Cleans up and removes open target orders at the end of the trading day to prevent carries over to next day.</p>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="cleanupTargetOrdersScheduleType">Schedule Type</label>
+                <select [(ngModel)]="config.taskSchedules.cleanupTargetOrders.scheduleType" 
+                        name="cleanupTargetOrdersScheduleType" id="cleanupTargetOrdersScheduleType" class="form-control">
+                  <option value="daily">Daily (at specific time)</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="interval">Interval (every N minutes)</option>
+                </select>
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.cleanupTargetOrders.scheduleType === 'daily'" class="form-row">
+              <div class="form-group">
+                <label for="cleanupTargetOrdersTime">Time (HH:MM format)</label>
+                <input type="text" [(ngModel)]="config.taskSchedules.cleanupTargetOrders.dailyTime" 
+                       name="cleanupTargetOrdersTime" id="cleanupTargetOrdersTime" class="form-control" 
+                       placeholder="23:30" pattern="([01]\d|2[0-3]):([0-5]\d)">
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.cleanupTargetOrders.scheduleType === 'interval'" class="form-row">
+              <div class="form-group">
+                <label for="cleanupTargetOrdersInterval">Interval (minutes)</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.cleanupTargetOrders.intervalMinutes" 
+                       name="cleanupTargetOrdersInterval" id="cleanupTargetOrdersInterval" class="form-control" 
+                       step="1" min="1" placeholder="60">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <input type="checkbox" [(ngModel)]="config.taskSchedules.cleanupTargetOrders.retryOnFailure" 
+                       name="cleanupTargetOrdersRetry" id="cleanupTargetOrdersRetry" class="checkbox-control">
+                <label for="cleanupTargetOrdersRetry">Retry on failure</label>
+              </div>
+              <div class="form-group" *ngIf="config.taskSchedules.cleanupTargetOrders.retryOnFailure">
+                <label for="cleanupTargetOrdersMaxRetries">Max retries</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.cleanupTargetOrders.maxRetries" 
+                       name="cleanupTargetOrdersMaxRetries" id="cleanupTargetOrdersMaxRetries" class="form-control" 
+                       step="1" min="1" max="10" placeholder="2">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Move SL to Entry Task -->
+        <div class="task-config">
+          <div class="task-header">
+            <div class="task-title-row">
+              <input type="checkbox" [(ngModel)]="config.taskSchedules.moveSLToEntry.enabled" 
+                     name="moveSLToEntryEnabled" id="moveSLToEntryEnabled" class="checkbox-control">
+              <label for="moveSLToEntryEnabled" class="task-title">Move Stop Loss to Entry</label>
+            </div>
+          </div>
+
+          <div class="task-content" *ngIf="config.taskSchedules.moveSLToEntry.enabled">
+            <div class="task-description">
+              <p>Automatically moves stop loss to entry price for positions without associated limit orders to lock in gains and reduce risk.</p>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="moveSLToEntryScheduleType">Schedule Type</label>
+                <select [(ngModel)]="config.taskSchedules.moveSLToEntry.scheduleType" 
+                        name="moveSLToEntryScheduleType" id="moveSLToEntryScheduleType" class="form-control">
+                  <option value="daily">Daily (at specific time)</option>
+                  <option value="hourly">Hourly</option>
+                  <option value="interval">Interval (every N minutes)</option>
+                </select>
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.moveSLToEntry.scheduleType === 'daily'" class="form-row">
+              <div class="form-group">
+                <label for="moveSLToEntryTime">Time (HH:MM format)</label>
+                <input type="text" [(ngModel)]="config.taskSchedules.moveSLToEntry.dailyTime" 
+                       name="moveSLToEntryTime" id="moveSLToEntryTime" class="form-control" 
+                       placeholder="09:15" pattern="([01]\d|2[0-3]):([0-5]\d)">
+              </div>
+            </div>
+
+            <div *ngIf="config.taskSchedules.moveSLToEntry.scheduleType === 'interval'" class="form-row">
+              <div class="form-group">
+                <label for="moveSLToEntryInterval">Interval (minutes)</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.moveSLToEntry.intervalMinutes" 
+                       name="moveSLToEntryInterval" id="moveSLToEntryInterval" class="form-control" 
+                       step="1" min="1" placeholder="60">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <input type="checkbox" [(ngModel)]="config.taskSchedules.moveSLToEntry.retryOnFailure" 
+                       name="moveSLToEntryRetry" id="moveSLToEntryRetry" class="checkbox-control">
+                <label for="moveSLToEntryRetry">Retry on failure</label>
+              </div>
+              <div class="form-group" *ngIf="config.taskSchedules.moveSLToEntry.retryOnFailure">
+                <label for="moveSLToEntryMaxRetries">Max retries</label>
+                <input type="number" [(ngModel)]="config.taskSchedules.moveSLToEntry.maxRetries" 
+                       name="moveSLToEntryMaxRetries" id="moveSLToEntryMaxRetries" class="form-control" 
+                       step="1" min="1" max="10" placeholder="3">
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- Action Buttons -->

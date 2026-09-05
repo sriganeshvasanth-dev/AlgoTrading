@@ -401,7 +401,7 @@ export class TaskSchedulerService implements OnDestroy {
           // Reschedule for next day
           this.scheduleDailyTask(task);
         }
-      ).catch(error => {
+      ).catch((error: any) => {
         console.error(`Failed to schedule job on native platform: ${task.name}`, error);
         // Fallback to web timer
         this.scheduleWebTimer(task, next);
@@ -465,7 +465,7 @@ export class TaskSchedulerService implements OnDestroy {
           console.log(`Executing ${task.name} at ${new Date().toLocaleString()}`);
           await this.executeTask(task, 0);
         }
-      ).catch(error => {
+      ).catch((error: any) => {
         console.error(`Failed to schedule job on native platform: ${task.name}`, error);
         // Fallback to web timer
         this.scheduleWebInterval(task, intervalMs);

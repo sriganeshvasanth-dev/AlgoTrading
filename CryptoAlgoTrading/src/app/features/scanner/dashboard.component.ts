@@ -113,13 +113,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     try {
       const config = this.configService.getConfig();
 
-      console.log('≡ƒôï Setting up task scheduler - schedulerEnabled:', config.schedulerEnabled, 'with task configs:', config.taskSchedules);
+      console.log('[Scheduler] Setting up task scheduler - schedulerEnabled:', config.schedulerEnabled, 'with task configs:', config.taskSchedules);
 
       // Register tasks regardless of schedulerEnabled flag
     // Individual task.enabled flags will control if they run
 
     const placeOrderConfig = config.taskSchedules.placeLimitOrder;
-    console.log('≡ƒôï [Dashboard] Registering Place Limit Order task with config:', {
+    console.log('[Dashboard] Registering Place Limit Order task with config:', {
       enabled: placeOrderConfig.enabled,
       scheduleType: placeOrderConfig.scheduleType,
       dailyTime: placeOrderConfig.dailyTime,
@@ -132,7 +132,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       'place-limit-order',
       'Place Limit Order',
       async () => {
-        console.log('≡ƒÜÇ [PlaceLimitOrder] Starting task execution');
+        console.log('[PlaceLimitOrder] Starting task execution');
         console.log('[PlaceLimitOrder] Current candidates count:', this.limitOrderCandidates.length);
 
         try {
@@ -141,14 +141,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
           // If no candidates are loaded, try to load them first
           if (this.limitOrderCandidates.length === 0) {
-            console.log('≡ƒôè [PlaceLimitOrder] No candidates loaded, attempting to load...');
+            console.log('[PlaceLimitOrder] No candidates loaded, attempting to load...');
             await this.loadLimitOrderCandidates();
             console.log('[PlaceLimitOrder] After loading, candidates count:', this.limitOrderCandidates.length);
           }
 
           // Execute limit orders for all candidates
           if (this.limitOrderCandidates.length > 0) {
-            console.log('≡ƒôè [PlaceLimitOrder] Executing orders for', this.limitOrderCandidates.length, 'candidates');
+            console.log('[PlaceLimitOrder] Executing orders for', this.limitOrderCandidates.length, 'candidates');
             const startTime = performance.now();
 
             // Add 60-second timeout to prevent hanging on mobile
@@ -160,9 +160,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
             ]);
 
             const endTime = performance.now();
-            console.log('Γ£à [PlaceLimitOrder] Orders executed successfully in', Math.round(endTime - startTime), 'ms');
+            console.log('[PlaceLimitOrder] Orders executed successfully in', Math.round(endTime - startTime), 'ms');
           } else {
-            console.warn('ΓÜá∩╕Å  [PlaceLimitOrder] No candidates available after load attempt');
+            console.warn('  [PlaceLimitOrder] No candidates available after load attempt');
             console.log('[PlaceLimitOrder] Possible causes:');
 
             console.log('  1. Market scanner has not been run');
@@ -170,14 +170,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
             console.log('  3. Network error while loading');
           }
         } catch (error) {
-          console.error('Γ¥î [PlaceLimitOrder] Task execution failed:', error);
+          console.error('[PlaceLimitOrder] Task execution failed:', error);
           throw error; // Re-throw so scheduler can log it as error
         }
       },
       config.taskSchedules.placeLimitOrder
     );
 
-    console.log('Γ£à [Dashboard] Registered place-limit-order task');
+    console.log('[Dashboard] Registered place-limit-order task');
 
     // IMPORTANT: Register REAL tasks for place-target-stopLoss and update-trailing-stopLoss
     // These use TargetStopLossManagerService directly, so they work immediately
@@ -185,7 +185,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     // Register Place Target & StopLoss task with REAL executor
     const placeTargetSlConfig = config.taskSchedules.placeTargetStopLoss;
-    console.log('≡ƒôï [Dashboard] Registering REAL executor task for place-target-stopLoss:', {
+    console.log('[Dashboard] Registering REAL executor task for place-target-stopLoss:', {
       enabled: placeTargetSlConfig.enabled,
       scheduleType: placeTargetSlConfig.scheduleType,
       dailyTime: placeTargetSlConfig.dailyTime
@@ -215,10 +215,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
           results: results
         });
 
-        this.logger.info('Γ£à place-target-stopLoss execution completed:', results);
+        this.logger.info('[PlaceTargetStopLoss] place-target-stopLoss execution completed:', results);
       } catch (err: any) {
         const errorMsg = err?.message || 'Failed to place target & stop loss orders';
-        this.logger.error('Γ¥î Error in place-target-stopLoss:', err);
+        this.logger.error('[PlaceTargetStopLoss] Error in place-target-stopLoss:', err);
         this.taskScheduler.recordTaskResults('place-target-stopLoss', {
           summary: 'Error placing target & stop loss',
           error: errorMsg,
@@ -236,11 +236,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     // Also register with TaskExecutorService so if PositionsComponent loads, it can replace this
     this.taskExecutorService.registerPlaceTargetStopLossExecutor(placeTargetExecutor);
-    console.log('Γ£à [Dashboard] Registered REAL executor task for place-target-stopLoss');
+    console.log('[Dashboard] Registered REAL executor task for place-target-stopLoss');
 
     // Register Update Trailing StopLoss task with REAL executor
     const trailingSlConfig = config.taskSchedules.updateTrailingStopLoss;
-    console.log('≡ƒôï [Dashboard] Registering REAL executor task for update-trailing-stopLoss:', {
+    console.log('[Dashboard] Registering REAL executor task for update-trailing-stopLoss:', {
       enabled: trailingSlConfig.enabled,
       scheduleType: trailingSlConfig.scheduleType,
       dailyTime: trailingSlConfig.dailyTime,
@@ -281,14 +281,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
               message: result?.message || 'Stop loss updated'
             });
 
-            console.log(`Γ£à [UpdateTrailingSL] ${position.symbol} completed:`, result);
+            console.log(`[UpdateTrailingSL] ${position.symbol} completed:`, result);
           } catch (err: any) {
             results.push({
               symbol: position.symbol,
               success: false,
               message: err?.message || 'Failed to update stop loss'
             });
-            console.error(`Γ¥î [UpdateTrailingSL] ${position.symbol} failed:`, err);
+            console.error(`[UpdateTrailingSL] ${position.symbol} failed:`, err);
           }
         }
 
@@ -305,10 +305,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
           results: results
         });
 
-        this.logger.info('Γ£à update-trailing-stopLoss execution completed:', results);
+        this.logger.info('[UpdateTrailingSL] update-trailing-stopLoss execution completed:', results);
       } catch (err: any) {
         const errorMsg = err?.message || 'Failed to update trailing stop loss';
-        this.logger.error('Γ¥î Error in update-trailing-stopLoss:', err);
+        this.logger.error('[UpdateTrailingSL] Error in update-trailing-stopLoss:', err);
         this.taskScheduler.recordTaskResults('update-trailing-stopLoss', {
           summary: 'Error updating trailing stop loss',
           error: errorMsg,
@@ -326,7 +326,199 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     // Also register with TaskExecutorService so if PositionsComponent loads, it can replace this
     this.taskExecutorService.registerUpdateTrailingStopLossExecutor(updateTrailingExecutor);
-    console.log('Γ£à [Dashboard] Registered REAL executor task for update-trailing-stopLoss');
+    console.log('[Dashboard] Registered REAL executor task for update-trailing-stopLoss');
+
+    // Register Cleanup Target Orders task
+    const cleanupTargetOrdersConfig = config.taskSchedules.cleanupTargetOrders;
+    console.log('[Dashboard] Registering Cleanup Target Orders task with config:', {
+      enabled: cleanupTargetOrdersConfig.enabled,
+      scheduleType: cleanupTargetOrdersConfig.scheduleType,
+      dailyTime: cleanupTargetOrdersConfig.dailyTime,
+      retryOnFailure: cleanupTargetOrdersConfig.retryOnFailure,
+      maxRetries: cleanupTargetOrdersConfig.maxRetries
+    });
+
+    const cleanupTargetOrdersExecutor = async () => {
+      console.log('[Dashboard] cleanup-target-orders executor called');
+      try {
+        // Call the cleanup service with 60-second timeout to prevent hanging on mobile
+        const results = await Promise.race([
+          this.svc.cleanupTargetOrders(),
+          new Promise<any>((_, reject) => 
+            setTimeout(() => reject(new Error('Cleanup timeout - exceeded 60 seconds')), 60000)
+          )
+        ]);
+
+        this.logger.info('[CleanupTargetOrders] cleanup-target-orders execution completed:', results);
+
+        // Record the scheduled execution result
+        this.taskScheduler.recordTaskResults('cleanup-target-orders', {
+          summary: `Cleaned up ${results.cancelled} out of ${results.total} stale limit orders`,
+          total: results.total,
+          succeeded: results.cancelled,
+          failed: results.total - results.cancelled,
+          results: results.details || [{ symbol: 'N/A', success: results.cancelled > 0, message: `Cleaned ${results.cancelled} orders` }]
+        });
+      } catch (err: any) {
+        const errorMsg = err?.message || 'Failed to cleanup target orders';
+        this.logger.error('[CleanupTargetOrders] Error in cleanup-target-orders:', err);
+        this.taskScheduler.recordTaskResults('cleanup-target-orders', {
+          summary: 'Error cleaning up target orders',
+          error: errorMsg,
+          results: [{ symbol: 'N/A', success: false, message: errorMsg }]
+        });
+      }
+    };
+
+    this.taskScheduler.registerTask(
+      'cleanup-target-orders',
+      'Cleanup Target Orders',
+      cleanupTargetOrdersExecutor,
+      cleanupTargetOrdersConfig
+    );
+    console.log('[Dashboard] Registered cleanup-target-orders task');
+
+    // Register Move SL to Entry task
+    const moveSLToEntryConfig = config.taskSchedules.moveSLToEntry;
+    console.log('[Dashboard] Registering Move SL to Entry task with config:', {
+      enabled: moveSLToEntryConfig.enabled,
+      scheduleType: moveSLToEntryConfig.scheduleType,
+      intervalMinutes: moveSLToEntryConfig.intervalMinutes,
+      retryOnFailure: moveSLToEntryConfig.retryOnFailure,
+      maxRetries: moveSLToEntryConfig.maxRetries
+    });
+
+    const moveSLToEntryExecutor = async () => {
+      console.log('[Dashboard] move-sl-to-entry executor called');
+      try {
+        // Get all positions
+        const positions = await this.svc.getPositions();
+
+        if (!positions || positions.length === 0) {
+          this.taskScheduler.recordTaskResults('move-sl-to-entry', {
+            summary: 'No open positions found',
+            total: 0,
+            succeeded: 0,
+            failed: 0,
+            results: [{ symbol: 'N/A', success: true, message: 'No positions available' }]
+          });
+          return;
+        }
+
+        console.log('[MoveSLToEntry] Processing ' + positions.length + ' positions');
+
+        // Get standalone limit orders and stop market orders for all positions at once
+        const [standaloneOrders, stopMarketOrders] = await Promise.all([
+          this.svc.getAllPendingStandaloneLimitOrders(),
+          this.svc.getAllPendingStopMarketOrders()
+        ]);
+
+        const results: Array<{ symbol: string; success: boolean; message: string }> = [];
+        const config = this.configService.getConfig();
+        const bufferPercentage = config.bufferPercentage;
+        const bufferMultiplier = 1 + (bufferPercentage / 100);
+
+        // Process each position
+        for (const position of positions) {
+          const symbol = position.product_symbol || position.symbol;
+
+          // Check if this position has a standalone limit order
+          const hasLimit = this.svc.hasStandaloneLimitOrderBySymbol(symbol, standaloneOrders);
+
+          if (hasLimit) {
+            console.log('[MoveSLToEntry] Skipping ' + symbol + ' - has standalone limit order');
+            results.push({
+              symbol: symbol,
+              success: true,
+              message: 'Has standalone limit order - skipped'
+            });
+            continue;
+          }
+
+          try {
+            const positionSize = parseFloat(position.size || 0);
+            const isBuyPosition = positionSize > 0;
+            const entryPrice = parseFloat(position.entry_price || 0);
+            const prev3High = parseFloat(position.prev3_high || 0);
+            const prev3Low = parseFloat(position.prev3_low || 0);
+
+            // Calculate stop loss price based on position type and buffer
+            let stoplossPrice: number;
+            if (isBuyPosition) {
+              // Buy StopLoss price = Max(Entry Price (1 + bufferMultiplier%), prev3Low(1 - bufferMultiplier%))
+              stoplossPrice = Math.max(
+                entryPrice * bufferMultiplier,
+                prev3Low * (2 - bufferMultiplier)
+              );
+            } else {
+              // Sell StopLoss price = Min(Entry Price (1 - bufferMultiplier%), prev3High(1 + bufferMultiplier%))
+              stoplossPrice = Math.min(
+                entryPrice * (2 - bufferMultiplier),
+                prev3High * bufferMultiplier
+              );
+            }
+
+            console.log('[MoveSLToEntry] Updating ' + symbol + ' to SL: ' + stoplossPrice);
+
+            // Use the DeltaService's updateStopLossToEntryPrice method
+            const updateResult = await this.svc.updateStopLossToEntryPrice(
+              position,
+              stoplossPrice,
+              stopMarketOrders
+            );
+
+            if (updateResult.success) {
+              console.log('[MoveSLToEntry] Updated stop loss for ' + symbol);
+              results.push({
+                symbol: symbol,
+                success: true,
+                message: updateResult.message
+              });
+            } else {
+              results.push({
+                symbol: symbol,
+                success: false,
+                message: updateResult.message
+              });
+            }
+          } catch (positionError: any) {
+            console.error('[MoveSLToEntry] Error processing ' + symbol + ':', positionError);
+            results.push({
+              symbol: symbol,
+              success: false,
+              message: positionError?.message || 'Error updating stop loss'
+            });
+          }
+        }
+
+        this.logger.info('[MoveSLToEntry] move-sl-to-entry execution completed:', results);
+
+        const successCount = results.filter(r => r.success).length;
+        this.taskScheduler.recordTaskResults('move-sl-to-entry', {
+          summary: `Moved stop loss to entry for ${successCount}/${results.length} positions`,
+          total: results.length,
+          succeeded: successCount,
+          failed: results.length - successCount,
+          results: results
+        });
+      } catch (err: any) {
+        const errorMsg = err?.message || 'Failed to move stop loss to entry';
+        this.logger.error('[MoveSLToEntry] Error in move-sl-to-entry:', err);
+        this.taskScheduler.recordTaskResults('move-sl-to-entry', {
+          summary: 'Error moving stop loss to entry',
+          error: errorMsg,
+          results: [{ symbol: 'N/A', success: false, message: errorMsg }]
+        });
+      }
+    };
+
+    this.taskScheduler.registerTask(
+      'move-sl-to-entry',
+      'Move Stop Loss to Entry',
+      moveSLToEntryExecutor,
+      moveSLToEntryConfig
+    );
+    console.log('[Dashboard] Registered move-sl-to-entry task');
 
     // Subscribe to config changes and update task configurations
     // CRITICAL: We need to handle both startup (first emission) and config changes (subsequent emissions)
@@ -337,18 +529,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.configService.config$
       .pipe(takeUntil(this.destroy$))
       .subscribe(updatedConfig => {
-        console.log('≡ƒôï [Dashboard] Config subscription fired, isFirstEmission:', isFirstEmission);
+        console.log('[Dashboard] Config subscription fired, isFirstEmission:', isFirstEmission);
 
         // CRITICAL: Only update task configs for tasks that need changes
         // Wrap in setTimeout to prevent UI blocking when multiple tasks restart
         if (isFirstEmission) {
           isFirstEmission = false;
-          console.log('ΓÅ▒∩╕Å [Dashboard] First config emission - deferring task initialization by 1 second');
+          console.log('[Dashboard] First config emission - deferring task initialization by 1 second');
 
           // Defer startup task initialization
           setTimeout(() => {
             try {
-              console.log('≡ƒôï [Dashboard] First-time config update - starting enabled tasks');
+              console.log('[Dashboard] First-time config update - starting enabled tasks');
 
               const updatedOrderConfig = updatedConfig.taskSchedules.placeLimitOrder;
               this.taskScheduler.updateTaskConfig('place-limit-order', updatedOrderConfig);
@@ -359,61 +551,85 @@ export class DashboardComponent implements OnInit, OnDestroy {
               const updatedTargetSlConfig = updatedConfig.taskSchedules.placeTargetStopLoss;
               this.taskScheduler.updateTaskConfig('place-target-stopLoss', updatedTargetSlConfig);
 
+              const updatedCleanupConfig = updatedConfig.taskSchedules.cleanupTargetOrders;
+              this.taskScheduler.updateTaskConfig('cleanup-target-orders', updatedCleanupConfig);
+
+              const updatedMoveSLConfig = updatedConfig.taskSchedules.moveSLToEntry;
+              this.taskScheduler.updateTaskConfig('move-sl-to-entry', updatedMoveSLConfig);
+
               // After config updates, start enabled tasks
               setTimeout(() => {
                 try {
-                  console.log('≡ƒÜÇ [Dashboard] Starting enabled tasks after config update');
+                  console.log('[Dashboard] Starting enabled tasks after config update');
 
                   if (updatedOrderConfig.enabled) {
-                    console.log('≡ƒÜÇ [Dashboard] Starting place-limit-order');
+                    console.log('[Dashboard] Starting place-limit-order');
                     this.taskScheduler.startTask('place-limit-order');
                   }
 
                   if (updatedTargetSlConfig.enabled) {
-                    console.log('≡ƒÜÇ [Dashboard] Starting place-target-stopLoss');
+                    console.log('[Dashboard] Starting place-target-stopLoss');
                     this.taskScheduler.startTask('place-target-stopLoss');
                   }
 
                   if (updatedTrailingSlConfig.enabled) {
-                    console.log('≡ƒÜÇ [Dashboard] Starting update-trailing-stopLoss');
+                    console.log('[Dashboard] Starting update-trailing-stopLoss');
                     this.taskScheduler.startTask('update-trailing-stopLoss');
                   }
+
+                  if (updatedCleanupConfig.enabled) {
+                    console.log('[Dashboard] Starting cleanup-target-orders');
+                    this.taskScheduler.startTask('cleanup-target-orders');
+                  }
+
+                  if (updatedMoveSLConfig.enabled) {
+                    console.log('[Dashboard] Starting move-sl-to-entry');
+                    this.taskScheduler.startTask('move-sl-to-entry');
+                  }
                 } catch (err) {
-                  console.error('Γ¥î [Dashboard] Error starting tasks:', err);
+                  console.error('[Dashboard] Error starting tasks:', err);
                   this.logger.error('Error starting tasks:', err);
                 }
               }, 500); // Stagger starts by 500ms
             } catch (error) {
-              console.error('Γ¥î [Dashboard] Error in first-time config update:', error);
+              console.error('[Dashboard] Error in first-time config update:', error);
               this.logger.error('Error in first-time config update:', error);
             }
           }, 1000);
         } else {
           // On subsequent emissions (user saves new times), defer config updates
-          console.log('≡ƒôï [Dashboard] Config change detected - deferring task update by 100ms');
+          console.log('[Dashboard] Config change detected - deferring task update by 100ms');
 
           setTimeout(() => {
             try {
               const updatedOrderConfig = updatedConfig.taskSchedules.placeLimitOrder;
-              console.log('≡ƒôï [Dashboard] Updating Place Limit Order task config');
+              console.log('[Dashboard] Updating Place Limit Order task config');
               this.taskScheduler.updateTaskConfig('place-limit-order', updatedOrderConfig);
 
               const updatedTrailingSlConfig = updatedConfig.taskSchedules.updateTrailingStopLoss;
-              console.log('≡ƒôï [Dashboard] Updating Update Trailing StopLoss task config');
+              console.log('[Dashboard] Updating Update Trailing StopLoss task config');
               this.taskScheduler.updateTaskConfig('update-trailing-stopLoss', updatedTrailingSlConfig);
 
               const updatedTargetSlConfig = updatedConfig.taskSchedules.placeTargetStopLoss;
-              console.log('≡ƒôï [Dashboard] Updating Place Target StopLoss task config');
+              console.log('[Dashboard] Updating Place Target StopLoss task config');
               this.taskScheduler.updateTaskConfig('place-target-stopLoss', updatedTargetSlConfig);
+
+              const updatedCleanupConfig = updatedConfig.taskSchedules.cleanupTargetOrders;
+              console.log('[Dashboard] Updating Cleanup Target Orders task config');
+              this.taskScheduler.updateTaskConfig('cleanup-target-orders', updatedCleanupConfig);
+
+              const updatedMoveSLConfig = updatedConfig.taskSchedules.moveSLToEntry;
+              console.log('[Dashboard] Updating Move SL to Entry task config');
+              this.taskScheduler.updateTaskConfig('move-sl-to-entry', updatedMoveSLConfig);
             } catch (error) {
-              console.error('Γ¥î [Dashboard] Error updating task configs:', error);
+              console.error('[Dashboard] Error updating task configs:', error);
               this.logger.error('Error updating task configs:', error);
             }
           }, 100); // Small delay to not block UI
         }
       });
     } catch (error) {
-      console.error('Γ¥î [Dashboard] Error during task scheduler setup:', error);
+      console.error('[Dashboard] Error during task scheduler setup:', error);
       this.logger.error('Task scheduler setup failed:', error);
       // Continue app execution even if scheduler setup fails
     }
@@ -431,9 +647,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return this.filteredItems.filter(item => item.crossedType === 'LOW').length;
   }
 
-  onPriceFilterChange(): void {
-    this.cdr.markForCheck();
-  }
 
 	async scan() {
 		this.items = [];
@@ -441,16 +654,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
 		this.progress = 0;
 
 		try {
-			console.log('≡ƒöì Step 1: Fetching all perpetual futures tickers...');
+			console.log('[Scan] Step 1: Fetching all perpetual futures tickers...');
 
 			// Step 1: Get all tickers for perpetual futures
 			const allTickers = await this.svc.getAllTickers();
-			console.log(`Γ£à Fetched ${allTickers.length} tickers`);
+			console.log(` Fetched ${allTickers.length} tickers`);
 
 			// Step 2: Filter top N symbols by turnover_usd (volume), using config value
 			const config = this.configService.getConfig();
 			const topVolumeCount = config.topVolumeSymbols;
-			console.log(`≡ƒôè Step 2: Filtering top ${topVolumeCount} by turnover_usd...`);
+			console.log(`[Scan] Step 2: Filtering top ${topVolumeCount} by turnover_usd...`);
 			const sortedByVolume = allTickers
 				.filter((t: any) => {
 					const turnover = parseFloat(t?.turnover_usd || t?.turnover || '0');
@@ -463,10 +676,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 				})
 				.slice(0, topVolumeCount); // Take top N
 
-			console.log(`Γ£à Top 80 symbols by volume:`, sortedByVolume.map((t: any) => t.symbol).join(', '));
+			console.log(`[Scan] Top 80 symbols by volume:`, sortedByVolume.map((t: any) => t.symbol).join(', '));
 
 			// Step 3: Get active positions and exclude symbols with open positions
-			console.log('≡ƒÜ½ Step 3: Excluding symbols with open positions...');
+			console.log(' Step 3: Excluding symbols with open positions...');
 			const activePositions = await this.svc.getPositions().catch(() => []);
 			const activeSymbols = new Set(
 				(Array.isArray(activePositions) ? activePositions : [])
@@ -479,13 +692,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
 				return symbol && !activeSymbols.has(symbol);
 			});
 
-			console.log(`Γ£à Filtered to ${filtered.length} symbols (excluding open positions)`);
+			console.log(` Filtered to ${filtered.length} symbols (excluding open positions)`);
 			console.log('Excluded symbols:', Array.from(activeSymbols).join(', '));
 
 			this.total = filtered.length;
 
 			// Step 4 & 5: Get 3-day high/low and check for breakouts
-			console.log('≡ƒôê Step 4-5: Checking for 3-day high/low breakouts...');
+			console.log('[Scan] Step 4-5: Checking for 3-day high/low breakouts...');
 
 			const concurrency = 6;
 			const queue = filtered.slice();
@@ -508,10 +721,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 			for (let i = 0; i < concurrency; i++) workers.push(worker());
 			await Promise.all(workers);
 
-			console.log(`Γ£à Scan complete! Found ${this.items.length} breakouts`);
+			console.log(` Scan complete! Found ${this.items.length} breakouts`);
 
 		} catch (error) {
-			console.error('Γ¥î Scanner error:', error);
+			console.error('[Scan] Scanner error:', error);
 		} finally {
 			this.loading = false;
 			this.cdr.markForCheck();
@@ -533,11 +746,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 		try {
 			const config = this.configService.getConfig();
 			const topVolumeCount = config.topVolumeSymbols;
-			console.log(`≡ƒöì Loading limit order candidates: Fetching top ${topVolumeCount} symbols by volume...`);
+			console.log(`[Scan] Loading limit order candidates: Fetching top ${topVolumeCount} symbols by volume...`);
 
 			// Step 1: Get all perpetual futures tickers
 			const allTickers = await this.svc.getAllTickers();
-			console.log(`Γ£à Fetched ${allTickers.length} tickers`);
+			console.log(` Fetched ${allTickers.length} tickers`);
 			if (allTickers.length === 0) {
 				throw new Error('No tickers available from API');
 			}
@@ -555,7 +768,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 				})
 				.slice(0, topVolumeCount);
 
-			console.log(`Γ£à Top ${topVolumeCount} symbols by volume:`, sortedByVolume.map((t: any) => t.symbol));
+			console.log(`[Scan] Top ${topVolumeCount} symbols by volume:`, sortedByVolume.map((t: any) => t.symbol));
 			console.log(`Top ${topVolumeCount} sample data:`, sortedByVolume.slice(0, 3).map((t: any) => ({
 				symbol: t.symbol,
 				turnover: t.turnover_usd || t.turnover,
@@ -565,7 +778,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
 			// Step 3: Exclude symbols with open positions
 			const activePositions = await this.svc.getPositions().catch((err) => {
-				console.warn('ΓÜá∩╕Å Could not fetch positions:', err);
+				console.warn(' Could not fetch positions:', err);
 				return [];
 			});
 			const activeSymbols = new Set(
@@ -574,18 +787,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
 					.filter((s: string) => !!s)
 			);
 
-			console.log(`≡ƒôè Active positions: ${activeSymbols.size} symbols`, Array.from(activeSymbols));
+			console.log(`[Scan] Active positions: ${activeSymbols.size} symbols`, Array.from(activeSymbols));
 
 			const filtered = sortedByVolume.filter((t: any) => {
 				const symbol = String(t?.symbol || '').toUpperCase();
 				return symbol && !activeSymbols.has(symbol);
 			});
 
-			console.log(`Γ£à Filtered to ${filtered.length} symbols (excluding open positions)`);
+			console.log(` Filtered to ${filtered.length} symbols (excluding open positions)`);
 
 			// Step 4: Load candle data for N-day high/low for each symbol
 			const concurrency = 6;
-			console.log(`ΓÅ│ Step 4: Loading candle data for ${filtered.length} symbols using ${concurrency} concurrent workers...`);
+			console.log(`[Scan] Step 4: Loading candle data for ${filtered.length} symbols using ${concurrency} concurrent workers...`);
 			const queue = filtered.slice();
 			const workers: Promise<void>[] = [];
 			let processedCount = 0;
@@ -596,7 +809,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 					const ticker = queue.shift();
 					if (!ticker) break;
 					callCount++;
-					console.log(`≡ƒô₧ Calling loadLimitOrderCandidateCandles (call #${callCount}) with symbol: ${ticker?.symbol}`);
+					console.log(` Calling loadLimitOrderCandidateCandles (call #${callCount}) with symbol: ${ticker?.symbol}`);
 					try {
 						await this.loadLimitOrderCandidateCandles(ticker);
 						processedCount++;
@@ -612,7 +825,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 			for (let i = 0; i < concurrency; i++) workers.push(worker());
 			await Promise.all(workers);
 
-			console.log(`Γ£à Successfully loaded ${this.limitOrderCandidates.length} candidates with candle data (called loadLimitOrderCandidateCandles ${callCount} times)`);
+			console.log(`[Scan] Successfully loaded ${this.limitOrderCandidates.length} candidates with candle data (called loadLimitOrderCandidateCandles ${callCount} times)`);
 			console.log(`Sample candidates:`, this.limitOrderCandidates.slice(0, 3));
 
 			// Initialize selections with default values based on order type
@@ -625,7 +838,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 			}
 
 		} catch (error) {
-			console.error('Γ¥î Error loading limit order candidates:', error);
+			console.error('[Scan] Error loading limit order candidates:', error);
 			this.limitOrderError = error instanceof Error ? error.message : 'Failed to load candidates. Check console for details.';
 		} finally {
 				this.loadingLimitOrderCandidates = false;
@@ -637,17 +850,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
 			 * Load candle data for a symbol and extract 3-day high/low
 			 */
 			private async loadLimitOrderCandidateCandles(ticker: any): Promise<void> {
-				console.log(`≡ƒöä loadLimitOrderCandidateCandles called with ticker:`, { symbol: ticker?.symbol, keys: Object.keys(ticker || {}).slice(0, 10) });
+				console.log(`[Scan] loadLimitOrderCandidateCandles called with ticker:`, { symbol: ticker?.symbol, keys: Object.keys(ticker || {}).slice(0, 10) });
 				const symbol = ticker?.symbol || '';
 				if (!symbol) {
-					console.warn('ΓÜá∩╕Å Ticker has no symbol, skipping', 'ticker keys:', Object.keys(ticker || {}));
+					console.warn('\Ticker has no symbol, skipping', 'ticker keys:', Object.keys(ticker || {}));
 					return;
 				}
-				console.log(`Γ£ô Processing symbol: ${symbol}`);
+				console.log(`[Ticker] Processing symbol: ${symbol}`);
 
 				try {
-					console.log(`≡ƒöº ${symbol}: Ticker object keys:`, Object.keys(ticker || {}).join(', '));
-					console.log(`≡ƒöº ${symbol}: Ticker price fields - last_price: ${ticker?.last_price}, last_traded_price: ${ticker?.last_traded_price}, mark_price: ${ticker?.mark_price}, spot_price: ${ticker?.spot_price}`);
+					console.log(`[Ticker] ${symbol}: Ticker object keys:`, Object.keys(ticker || {}).join(', '));
+					console.log(`[Ticker] ${symbol}: Ticker price fields - last_price: ${ticker?.last_price}, last_traded_price: ${ticker?.last_traded_price}, mark_price: ${ticker?.mark_price}, spot_price: ${ticker?.spot_price}`);
 
 					const quotingAsset = ticker?.quoting_asset || ticker?.settling_asset || '';
 					const contractValue = parseFloat(ticker?.contract_value || ticker?.size || '0.001');
@@ -658,16 +871,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
 					const toSec = Math.floor(now / 1000);
 					const fromDailySec = toSec - 60 * 60 * 24 * (config.daysHighLow + 1);
 
-					console.log(`≡ƒôÑ ${symbol}: Fetching candles from ${new Date(fromDailySec * 1000).toISOString()} to ${new Date(toSec * 1000).toISOString()}`);
+					console.log(`[Candles] ${symbol}: Fetching candles from ${new Date(fromDailySec * 1000).toISOString()} to ${new Date(toSec * 1000).toISOString()}`);
 
 					const daily = await this.svc.getCandles(symbol, '1d', fromDailySec, toSec);
-					console.log(`≡ƒôª ${symbol}: Raw API response type: ${typeof daily}, is array: ${Array.isArray(daily)}, value:`, daily);
+					console.log(`[Candles] ${symbol}: Raw API response type: ${typeof daily}, is array: ${Array.isArray(daily)}, value:`, daily);
 					const dailyArr = (Array.isArray(daily) ? daily : (daily as any)?.candles ?? []) as any[];
 
-					console.log(`≡ƒôè ${symbol}: Parsed candle array length: ${dailyArr?.length || 0}, first 2:`, dailyArr?.slice(0, 2));
+					console.log(`[Candles] ${symbol}: Parsed candle array length: ${dailyArr?.length || 0}, first 2:`, dailyArr?.slice(0, 2));
 
 					if (!dailyArr || dailyArr.length < 2) {
-						console.warn(`ΓÜá∩╕Å ${symbol}: Insufficient candle data (${dailyArr?.length || 0} candles, need at least 2)`);
+						console.warn(` ${symbol}: Insufficient candle data (${dailyArr?.length || 0} candles, need at least 2)`);
 						return;
 					}
 
@@ -701,10 +914,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 						? (today[3] ?? Number.NaN)
 						: (today.low ?? today.l ?? Number.NaN);
 
-					console.log(`≡ƒôê ${symbol}: Prev3 High/Low: ${prev3High}/${prev3Low}, Today High/Low: ${todayHigh}/${todayLow}`);
+					console.log(`[Candles] ${symbol}: Prev3 High/Low: ${prev3High}/${prev3Low}, Today High/Low: ${todayHigh}/${todayLow}`);
 
 					if (!isFinite(prev3High) || !isFinite(prev3Low)) {
-						console.warn(`ΓÜá∩╕Å ${symbol}: Invalid high/low values (H:${prev3High}, L:${prev3Low})`);
+						console.warn(` ${symbol}: Invalid high/low values (H:${prev3High}, L:${prev3Low})`);
 						return;
 					}
 
@@ -718,20 +931,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
 						const closePrice = Array.isArray(todayCandle) ? todayCandle[4] : (todayCandle?.close || todayCandle?.c);
 						currentPrice = parseFloat(closePrice || '0');
 						priceSource = 'candle close';
-						console.log(`≡ƒÆí ${symbol}: Ticker price was 0, using today's close price from candle index[4]: Γé╣${currentPrice}`);
+						console.log(` ${symbol}: Ticker price was 0, using today's close price from candle index[4]: ${currentPrice}`);
 					}
 
-					console.log(`≡ƒÆ░ ${symbol}: Current price (from ${priceSource}): Γé╣${currentPrice}`);
+					console.log(` ${symbol}: Current price (from ${priceSource}): ${currentPrice}`);
 
 					if (currentPrice <= 0) {
-						console.warn(`ΓÜá∩╕Å ${symbol}: Invalid current price (${currentPrice})`);
+						console.warn(` ${symbol}: Invalid current price (${currentPrice})`);
 						return;
 					}
 
 					// Filter by minimum price - skip if current price is below minimum
 					const minPriceValue = this.minPrice ?? 0;
 					if (currentPrice < minPriceValue) {
-						console.log(`ΓÅ¡∩╕Å ${symbol}: Skipped - Current price Γé╣${currentPrice.toFixed(2)} < Minimum price Γé╣${minPriceValue}`);
+						console.log(` ${symbol}: Skipped - Current price ${currentPrice.toFixed(2)} < Minimum price ${minPriceValue}`);
 						return;
 					}
 
@@ -762,9 +975,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 						contractValue
 					});
 
-					console.log(`Γ£à ${symbol}: Added BUY & SELL candidates | Price: Γé╣${currentPrice.toFixed(2)} | Prev3 H: Γé╣${prev3High.toFixed(2)} | Prev3 L: Γé╣${prev3Low.toFixed(2)}`);
+					console.log(` ${symbol}: Added BUY & SELL candidates | Price: ${currentPrice.toFixed(2)} | Prev3 H: ${prev3High.toFixed(2)} | Prev3 L: ${prev3Low.toFixed(2)}`);
 				} catch (err) {
-					console.error(`Γ¥î Error processing candles for ${symbol}:`, err);
+					console.error(`[Scan] Error processing candles for ${symbol}:`, err);
 					// Don't rethrow - continue processing other symbols
 				}
 			}
@@ -802,12 +1015,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 			this.cleanupResults = null;
 			this.cdr.markForCheck();
 
-			console.log('≡ƒº╣ Starting cleanup of target orders...');
+			console.log('\Starting cleanup of target orders...');
 
 			// Call the cleanup service method
 			const results = await this.svc.cleanupTargetOrders();
 
-			console.log('≡ƒº╣ Cleanup results:', results);
+			console.log('\Cleanup results:', results);
 
 			// Store results
 			this.cleanupResults = results;
@@ -818,10 +1031,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
 			} else if (results.cancelled === 0) {
 				this.cleanupSuccess = `Scan complete. All ${results.total} limit order(s) have corresponding open positions.`;
 			} else {
-				this.cleanupSuccess = `Γ£à Successfully cleaned up ${results.cancelled} out of ${results.total} stale limit orders.`;
+				this.cleanupSuccess = ` Successfully cleaned up ${results.cancelled} out of ${results.total} stale limit orders.`;
 			}
 
-			console.log('Γ£à Cleanup completed:', this.cleanupSuccess);
+			console.log('\Cleanup completed:', this.cleanupSuccess);
 			this.cdr.markForCheck();
 
 			// Auto-clear success message after 5 seconds
@@ -831,7 +1044,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 			}, 5000);
 
 		} catch (error: any) {
-			console.error('Γ¥î Cleanup error:', error);
+			console.error('\Cleanup error:', error);
 			this.cleanupError = error?.message || 'Failed to cleanup target orders. Please check the console for details.';
 			this.cdr.markForCheck();
 
@@ -913,7 +1126,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 		const lowThreshold = prev3Low / bufferMultiplier;
 
 		if (todayHigh > highThreshold) {
-			console.log(`Γ£à ${symbol}: Crossed ABOVE 3-day high | Today: ${todayHigh.toFixed(2)}, Threshold: ${highThreshold.toFixed(2)}`);
+			console.log(` ${symbol}: Crossed ABOVE 3-day high | Today: ${todayHigh.toFixed(2)}, Threshold: ${highThreshold.toFixed(2)}`);
 			this.items.push({ 
 				symbol, 
 				crossedType: 'HIGH', 
@@ -928,7 +1141,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 		}
 
 		if (todayLow < lowThreshold) {
-			console.log(`Γ£à ${symbol}: Crossed BELOW 3-day low | Today: ${todayLow.toFixed(2)}, Threshold: ${lowThreshold.toFixed(2)}`);
+			console.log(` ${symbol}: Crossed BELOW 3-day low | Today: ${todayLow.toFixed(2)}, Threshold: ${lowThreshold.toFixed(2)}`);
 			this.items.push({ 
 				symbol, 
 				crossedType: 'LOW', 
@@ -1061,7 +1274,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 		const config = this.configService.getConfig();
 		if (this.orderForm.riskAmountInr < config.riskAmountInr - 500 || this.orderForm.riskAmountInr > config.riskAmountInr + 500) {
 			const confirmed = confirm(
-				`Risk (Γé╣${this.orderForm.riskAmountInr}) is outside the recommended range of Γé╣${config.riskAmountInr - 500}-Γé╣${config.riskAmountInr + 500}.\n\nDo you want to proceed anyway?`
+				`Risk (${this.orderForm.riskAmountInr}) is outside the recommended range of ${config.riskAmountInr - 500}-${config.riskAmountInr + 500}.\n\nDo you want to proceed anyway?`
 			);
 			if (!confirmed) {
 				return;
@@ -1205,8 +1418,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
 							results.push(
 								`${symbol} (${side.toUpperCase()}): ` +
-								`Entry: Γé╣${entryPr}, SL: Γé╣${slPr}, ` +
-								`Qty: ${qty}, Risk: Γé╣${effectiveRisk}, Target: Γé╣${res.calculations.targetPrice}`
+								`Entry: ${entryPr}, SL: ${slPr}, ` +
+								`Qty: ${qty}, Risk: ${effectiveRisk}, Target: ${res.calculations.targetPrice}`
 							);
 						} catch (err: any) {
 					results.push(`${symbol} (${side}): failed - ${err?.message || err}`);

@@ -40,6 +40,19 @@
         </svg>
         <span *ngIf="trailingSLLoading">Updating All...</span>
       </button>
+      <button (click)="moveStopLossToEntry()" [disabled]="loading || positions.length === 0" class="btn-move-sl" title="Check positions for standalone limit orders and log those without them">
+        <svg *ngIf="!loading" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12h18"></path>
+          <path d="M3 12l4-4"></path>
+          <path d="M3 12l4 4"></path>
+        </svg>
+        <span *ngIf="!loading">Move SL to Entry</span>
+        <svg *ngIf="loading" class="spinner-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 2a10 10 0 0 1 10 10"></path>
+        </svg>
+        <span *ngIf="loading">Checking...</span>
+      </button>
       <button (click)="loadPositions()" [disabled]="loading" class="btn-refresh">
         <svg *ngIf="!loading" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="23 4 23 10 17 10"></polyline>
@@ -113,6 +126,52 @@
         </div>
         <div class="order-modal-footer">
           <button type="button" class="btn-primary" (click)="closeTrailingSLResults()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move SL to Entry Results Modal -->
+    <div class="order-modal-backdrop" *ngIf="showMoveSlToEntryResults && moveSlToEntryResults.length > 0" (click)="closeMoveSlToEntryResults()">
+      <div class="order-modal move-sl-results-modal" (click)="$event.stopPropagation()">
+        <div class="order-modal-header">
+          <h2>📊 Move SL to Entry Results</h2>
+          <button type="button" class="order-close" (click)="closeMoveSlToEntryResults()">✕</button>
+        </div>
+        <div class="order-modal-body">
+          <div class="move-sl-summary">
+            <div class="summary-stat">
+              <span class="summary-label">Total:</span>
+              <span class="summary-value">{{ moveSlToEntryResults.length }}</span>
+            </div>
+            <div class="summary-stat success">
+              <span class="summary-label">Success:</span>
+              <span class="summary-value">{{ moveSlToEntryResults.filter(r => r.success).length }}</span>
+            </div>
+            <div class="summary-stat error">
+              <span class="summary-label">Failed:</span>
+              <span class="summary-value">{{ moveSlToEntryResults.filter(r => !r.success).length }}</span>
+            </div>
+          </div>
+          <div class="move-sl-results">
+            <div *ngFor="let result of moveSlToEntryResults" 
+                 class="result-item" 
+                 [class.success]="result.success" 
+                 [class.error]="!result.success">
+              <span class="result-icon">{{ result.success ? '✅' : '❌' }}</span>
+              <div class="result-details">
+                <strong class="result-symbol">{{ result.symbol }}</strong>
+                <span class="result-message">{{ result.message }}</span>
+                <div *ngIf="result.oldPrice" class="result-prices">
+                  <span class="price-label">Old SL: ₹{{ result.oldPrice | number: '1.2-2' }}</span>
+                  <span class="price-arrow">→</span>
+                  <span class="price-label">New SL: ₹{{ result.newPrice | number: '1.2-2' }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="order-modal-footer">
+          <button type="button" class="btn-primary" (click)="closeMoveSlToEntryResults()">Close</button>
         </div>
       </div>
     </div>

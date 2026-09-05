@@ -91,6 +91,11 @@ export class PAndLComponent implements OnInit, OnDestroy {
   totalFees = 0;
   totalNetPnL = 0;
 
+  // Today's P&L
+  todayPnL = 0;
+  todayFees = 0;
+  todayNetPnL = 0;
+
   // Currency conversion
   USD_TO_INR = 85; // 1 USD = 85 INR
 
@@ -182,6 +187,9 @@ export class PAndLComponent implements OnInit, OnDestroy {
         totalFees: this.totalFees,
         totalNetPnL: this.totalNetPnL
       });
+
+      // Calculate today's P&L
+      this.calculateTodayPnL();
     } catch (err: any) {
       this.error = err?.message || 'Failed to load P&L data';
       this.logger.error('Error loading P&L data:', err);
@@ -476,11 +484,55 @@ export class PAndLComponent implements OnInit, OnDestroy {
   /**
    * Calculate total quantity from buy fills
    * @param buys Array of buy Fill objects
-   * @returns Total quantity traded
+   * @returns Total quantity or 0 if no buys
    */
   calculateTotalQuantity(buys: any[]): number {
     if (!buys || buys.length === 0) return 0;
     return buys.reduce((sum, fill) => sum + fill.size, 0);
+  }
+
+  /**
+   * Calculate today's P&L by filtering data for today's date
+   */
+  private calculateTodayPnL(): void {
+    this.todayPnL = 0;
+    this.todayFees = 0;
+    this.todayNetPnL = 0;
+
+    const today = new Date();
+    const todayDateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    // Recursively find all nodes dated today and sum their P&L
+    const sumTodayPnL = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        // Only check month nodes at the top level and sum their date children
+        if (node.type === 'month' && node.children) {
+          for (const week of node.children) {
+            if (week.type === 'week' && week.children) {
+              for (const date of week.children) {
+                if (date.type === 'date' && date.label.includes(todayDateStr)) {
+                  // This is today's date node, sum all symbol P&L under it
+                  if (date.children) {
+                    for (const symbol of date.children) {
+                      this.todayPnL += symbol.pnl || 0;
+                      this.todayFees += symbol.fees || 0;
+                      this.todayNetPnL += symbol.netPnL || 0;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+
+    sumTodayPnL(this.hierarchyData);
+
+    // Round to 2 decimal places
+    this.todayPnL = Math.round(this.todayPnL * 100) / 100;
+    this.todayFees = Math.round(this.todayFees * 100) / 100;
+    this.todayNetPnL = Math.round(this.todayNetPnL * 100) / 100;
   }
 
   /**

@@ -40,6 +40,8 @@ export interface AppConfig {
     placeLimitOrder: TaskScheduleConfig;
     placeTargetStopLoss: TaskScheduleConfig;
     updateTrailingStopLoss: TaskScheduleConfig;
+    cleanupTargetOrders: TaskScheduleConfig;
+    moveSLToEntry: TaskScheduleConfig;
   };
 }
 
@@ -85,6 +87,20 @@ export class ConfigService {
         dailyTime: '00:05',           // 12:05 AM
         retryOnFailure: true,
         maxRetries: 3
+      },
+      cleanupTargetOrders: {
+        enabled: false,
+        scheduleType: 'daily',
+        dailyTime: '23:30',           // 11:30 PM
+        retryOnFailure: true,
+        maxRetries: 2
+      },
+      moveSLToEntry: {
+        enabled: false,
+        scheduleType: 'interval',
+        intervalMinutes: 60,          // Every 1 hour
+        retryOnFailure: true,
+        maxRetries: 3
       }
     }
   };
@@ -104,7 +120,9 @@ export class ConfigService {
     console.log('  - Task Schedules:', {
       placeLimitOrder: loadedConfig.taskSchedules.placeLimitOrder,
       placeTargetStopLoss: loadedConfig.taskSchedules.placeTargetStopLoss,
-      updateTrailingStopLoss: loadedConfig.taskSchedules.updateTrailingStopLoss
+      updateTrailingStopLoss: loadedConfig.taskSchedules.updateTrailingStopLoss,
+      cleanupTargetOrders: loadedConfig.taskSchedules.cleanupTargetOrders,
+      moveSLToEntry: loadedConfig.taskSchedules.moveSLToEntry
     });
   }
 
@@ -136,6 +154,14 @@ export class ConfigService {
             updateTrailingStopLoss: {
               ...this.defaultConfig.taskSchedules.updateTrailingStopLoss,
               ...parsed.taskSchedules.updateTrailingStopLoss
+            },
+            cleanupTargetOrders: {
+              ...this.defaultConfig.taskSchedules.cleanupTargetOrders,
+              ...parsed.taskSchedules.cleanupTargetOrders
+            },
+            moveSLToEntry: {
+              ...this.defaultConfig.taskSchedules.moveSLToEntry,
+              ...parsed.taskSchedules.moveSLToEntry
             }
           };
         }
@@ -152,6 +178,8 @@ export class ConfigService {
         console.log('  - placeLimitOrder:', merged.taskSchedules.placeLimitOrder);
         console.log('  - placeTargetStopLoss:', merged.taskSchedules.placeTargetStopLoss);
         console.log('  - updateTrailingStopLoss:', merged.taskSchedules.updateTrailingStopLoss);
+        console.log('  - cleanupTargetOrders:', merged.taskSchedules.cleanupTargetOrders);
+        console.log('  - moveSLToEntry:', merged.taskSchedules.moveSLToEntry);
         return merged;
       }
     } catch (error) {
@@ -161,6 +189,8 @@ export class ConfigService {
     console.log('  - placeLimitOrder:', this.defaultConfig.taskSchedules.placeLimitOrder);
     console.log('  - placeTargetStopLoss:', this.defaultConfig.taskSchedules.placeTargetStopLoss);
     console.log('  - updateTrailingStopLoss:', this.defaultConfig.taskSchedules.updateTrailingStopLoss);
+    console.log('  - cleanupTargetOrders:', this.defaultConfig.taskSchedules.cleanupTargetOrders);
+    console.log('  - moveSLToEntry:', this.defaultConfig.taskSchedules.moveSLToEntry);
     return { ...this.defaultConfig };
   }
 
@@ -197,7 +227,13 @@ export class ConfigService {
           : currentConfig.taskSchedules.placeTargetStopLoss,
         updateTrailingStopLoss: updates.taskSchedules?.updateTrailingStopLoss
           ? { ...currentConfig.taskSchedules.updateTrailingStopLoss, ...updates.taskSchedules.updateTrailingStopLoss }
-          : currentConfig.taskSchedules.updateTrailingStopLoss
+          : currentConfig.taskSchedules.updateTrailingStopLoss,
+        cleanupTargetOrders: updates.taskSchedules?.cleanupTargetOrders
+          ? { ...currentConfig.taskSchedules.cleanupTargetOrders, ...updates.taskSchedules.cleanupTargetOrders }
+          : currentConfig.taskSchedules.cleanupTargetOrders,
+        moveSLToEntry: updates.taskSchedules?.moveSLToEntry
+          ? { ...currentConfig.taskSchedules.moveSLToEntry, ...updates.taskSchedules.moveSLToEntry }
+          : currentConfig.taskSchedules.moveSLToEntry
       },
       scheduledFeatures: updates.scheduledFeatures
         ? { ...currentConfig.scheduledFeatures, ...updates.scheduledFeatures }
@@ -216,6 +252,8 @@ export class ConfigService {
     console.log('📝 [ConfigService] Final config before save - placeLimitOrder:', newConfig.taskSchedules.placeLimitOrder);
     console.log('📝 [ConfigService] Final config before save - placeTargetStopLoss:', newConfig.taskSchedules.placeTargetStopLoss);
     console.log('📝 [ConfigService] Final config before save - updateTrailingStopLoss:', newConfig.taskSchedules.updateTrailingStopLoss);
+    console.log('📝 [ConfigService] Final config before save - cleanupTargetOrders:', newConfig.taskSchedules.cleanupTargetOrders);
+    console.log('📝 [ConfigService] Final config before save - moveSLToEntry:', newConfig.taskSchedules.moveSLToEntry);
 
     try {
       const jsonStr = JSON.stringify(newConfig);

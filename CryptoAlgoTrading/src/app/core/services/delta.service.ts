@@ -478,6 +478,68 @@ export class DeltaService {
   }
 
   /**
+   * Get all pending standalone limit orders (not part of bracket orders)
+   * Filters for order_type === "limit_order" and (bracket_order === null or bracket_order === false)
+   * This is more efficient than checking each symbol individually
+   */
+  /**
+   * Get all pending standalone limit orders directly from API
+   * Filters for order_type === "limit_order" and (bracket_order === null or bracket_order === false)
+   * This is more efficient than checking each symbol individually
+   */
+  async getAllPendingStandaloneLimitOrders(): Promise<any[]> {
+    try {
+      // Call API directly to get all pending limit orders
+      // Filter criteria: order_type=limit_order and bracket_order is null/false
+      const path = `/v2/orders?contract_types=perpetual_futures&order_types=limit&state=open&page_size=5000`;
+
+      this.debug.log(`[MoveSlToEntry] Fetching all pending standalone limit orders from ${path}`);
+
+      const response = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
+
+      // Handle different response formats
+      const allOrders = Array.isArray(response) ? response : (response?.result || response?.data || []);
+      const totalCount = response?.meta?.total_count;
+
+      // Filter for standalone limit orders (bracket_order should be null or false)
+      const standaloneLimit = (Array.isArray(allOrders) ? allOrders : []).filter((order: any) => {
+        const isLimitOrder = order.order_type === 'limit_order';
+        const isNotStopOrder = order.stop_order_type === null || order.stop_order_type === undefined;
+        return isLimitOrder && isNotStopOrder;
+      });      
+
+      this.debug.log(
+        `[MoveSlToEntry] getAllPendingStandaloneLimitOrders: Found ${standaloneLimit.length} standalone limit orders (total_count=${totalCount})`
+      );
+
+      return standaloneLimit;
+    } catch (error: any) {
+      this.debug.error(`getAllPendingStandaloneLimitOrders error:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if a symbol has a standalone limit order
+   * Uses the provided list of standalone limit orders instead of fetching all orders
+   * @param symbol - The symbol to check
+   * @param standaloneOrders - Pre-fetched list of standalone limit orders
+   */
+  hasStandaloneLimitOrderBySymbol(symbol: string, standaloneOrders: any[]): boolean {
+    const symbolUpper = symbol.toUpperCase();
+    const hasLimit = standaloneOrders.some((order: any) => {
+      const orderSymbol = (order.product_symbol || order.symbol || '').toUpperCase();
+      return orderSymbol === symbolUpper;
+    });
+
+    this.debug.log(
+      `[MoveSlToEntry] Symbol ${symbol}: ${hasLimit ? 'HAS' : 'MISSING'} standalone limit order`
+    );
+
+    return hasLimit;
+  }
+
+  /**
    * Get bracket orders for a specific product
    * Filters for orders where bracket_order === true AND stop_order_type === 'stop_loss_order'
    * This is used to prevent duplicate bracket order placement
@@ -1325,7 +1387,7 @@ export class DeltaService {
    */
   private candlesCache: { [key: string]: { timestamp: number; candles: any[] } } = {};
 
-  private async getAllPendingStopMarketOrders(): Promise<any[]> {
+  async getAllPendingStopMarketOrders(): Promise<any[]> {
     const now = Date.now();
 
     // Return cached orders if still valid
@@ -1673,6 +1735,112 @@ export class DeltaService {
         success: false, 
         message: error?.message || 'Unknown error', 
         symbol 
+      };
+    }
+  }
+
+  /**
+   * Update stop loss price to a specific price (used for Move SL to Entry)
+   * Buy StopLoss price = Entry Price * (1 + bufferMultiplier%)
+   * Sell StopLoss price = Entry Price / (1 + bufferMultiplier%)
+   */
+  async updateStopLossToEntryPrice(position: any, newStopLossPrice: number, stopMarketOrders?: any[]): Promise<{ success: boolean; message: string; oldPrice?: number }> {
+    try {
+      const symbol = position.symbol || position.product_symbol;
+      if (!symbol) {
+        return { success: false, message: 'No symbol found' };
+      }
+
+      this.debug.log(`[MoveSlToEntry] Updating SL for ${symbol} to ${newStopLossPrice}`);
+
+      const productId = position.product_id;
+      if (!productId) {
+        return { success: false, message: 'Could not get product_id from position' };
+      }
+
+      // Use provided stopMarketOrders or fetch all pending stop_market orders
+      const allOrders = stopMarketOrders || (await this.getAllPendingStopMarketOrders());
+
+      // Filter orders for this specific product by symbol
+      const orders = allOrders.filter((o: any) => {
+        const orderSymbol = (o.product_symbol || o.symbol || '').toUpperCase();
+        const posSymbol = symbol.toUpperCase();
+        return orderSymbol === posSymbol;
+      });
+
+      if (orders.length === 0) {
+        return { 
+          success: false, 
+          message: `No active stop loss orders found for ${symbol}`
+        };
+      }
+
+      // Match the stop loss order by side
+      const positionSize = parseFloat(position.size || 0);
+      const isBuyPosition = positionSize > 0;
+      const stopLossSide = isBuyPosition ? 'sell' : 'buy';  // SL is opposite side
+
+      // Find stop loss order matching the side
+      const stopLossOrder = orders.find((o: any) => o.side === stopLossSide);
+
+      if (!stopLossOrder) {
+        return { 
+          success: false, 
+          message: `No stop loss order found with side=${stopLossSide}`
+        };
+      }
+
+      this.debug.log(`Found stop loss order for ${symbol}:`, {
+        id: stopLossOrder.id,
+        current_price: stopLossOrder.stop_price,
+        new_price: newStopLossPrice
+      });
+
+      const currentStopLoss = parseFloat(stopLossOrder.stop_price);
+
+      // Round both prices to 2 decimal places to avoid floating-point precision issues
+      const roundedCurrentStopLoss = Math.round(currentStopLoss * 100) / 100;
+      const roundedNewStopLossPrice = Math.round(newStopLossPrice * 100) / 100;
+
+      if (roundedNewStopLossPrice === roundedCurrentStopLoss) {
+        return { 
+          success: true, 
+          message: `No update needed (SL: ${roundedCurrentStopLoss})`,
+          oldPrice: roundedCurrentStopLoss
+        };
+      }
+
+      // Update the stop loss order using PUT /v2/orders
+      const updatePayload = {
+        id: stopLossOrder.id,
+        product_id: stopLossOrder.product_id,
+        product_symbol: stopLossOrder.product_symbol || symbol,
+        size: stopLossOrder.size,
+        stop_price: String(roundedNewStopLossPrice)
+      };
+
+      this.debug.log(`[MoveSlToEntry] Updating stop loss order:`, updatePayload);
+
+      await this.authenticatedRequest('PUT', '/v2/orders', updatePayload, this.baseUrl);
+
+      // Invalidate the cache since we just modified an order
+      this.clearStopMarketOrdersCache();
+
+      const positionType = isBuyPosition ? 'BUY' : 'SELL';
+      this.debug.log(`[MoveSlToEntry] Stop loss updated successfully (${positionType}) from ${roundedCurrentStopLoss} to ${roundedNewStopLossPrice}`);
+
+      return {
+        success: true,
+        message: `Updated SL (${positionType}) from ${roundedCurrentStopLoss} to ${roundedNewStopLossPrice}`,
+        oldPrice: roundedCurrentStopLoss
+      };
+
+    } catch (error: any) {
+      const symbol = position.symbol || position.product_symbol || 'Unknown';
+      this.debug.error(`[MoveSlToEntry] Error updating SL for ${symbol}:`, error);
+      return { 
+        success: false, 
+        message: error?.message || 'Failed to update stop loss'
       };
     }
   }

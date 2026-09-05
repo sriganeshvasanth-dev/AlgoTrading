@@ -1,10 +1,11 @@
  /* ===================================
-   CRYPTO SCANNER - PROFESSIONAL THEME
-   Dark/Light Mode with Mobile Responsive
-   =================================== */
+    CRYPTO SCANNER - PROFESSIONAL THEME
+    Dark/Light Mode with Mobile Responsive
+    =================================== */
 
 /* CSS Variables for Theme */
-:root {
+:root,
+[data-theme="light"] {
   /* Light Theme Colors */
   --bg-primary: #ffffff;
   --bg-secondary: #f8f9fa;

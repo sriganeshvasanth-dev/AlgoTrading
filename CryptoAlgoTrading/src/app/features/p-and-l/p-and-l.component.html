@@ -33,6 +33,28 @@
       </button>
     </div>
 
+    <!-- Today's P&L Card - Top Right Corner -->
+    <div class="today-pnl-card-box" [ngClass]="getPnLClass(todayNetPnL)" *ngIf="todayNetPnL !== 0 || todayPnL !== 0">
+      <div class="today-card-header">
+        <span class="today-card-icon">📅</span>
+        <span class="today-card-title">Today's Performance</span>
+      </div>
+      <div class="today-card-body">
+        <div class="pnl-metric">
+          <div class="metric-label">P&L</div>
+          <div class="metric-value" [ngClass]="getPnLClass(todayPnL)">{{ formatCurrency(todayPnL) }}</div>
+        </div>
+        <div class="pnl-metric">
+          <div class="metric-label">Fees</div>
+          <div class="metric-value fees">{{ formatCurrency(todayFees) }}</div>
+        </div>
+        <div class="pnl-metric">
+          <div class="metric-label">Net P&L</div>
+          <div class="metric-value net-pnl" [ngClass]="getPnLClass(todayNetPnL)">{{ formatCurrency(todayNetPnL) }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Quick Filters -->
     <div class="quick-filters">
       <button class="btn btn-outline" (click)="setLast7Days()">Last 7 Days</button>

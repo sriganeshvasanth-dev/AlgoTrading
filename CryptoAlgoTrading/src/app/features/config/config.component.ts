@@ -95,6 +95,8 @@ export class ConfigComponent implements OnInit, OnDestroy, CanDeactivate<ConfigC
         placeLimitOrder: this.config.taskSchedules.placeLimitOrder,
         placeTargetStopLoss: this.config.taskSchedules.placeTargetStopLoss,
         updateTrailingStopLoss: this.config.taskSchedules.updateTrailingStopLoss,
+        cleanupTargetOrders: this.config.taskSchedules.cleanupTargetOrders,
+        moveSLToEntry: this.config.taskSchedules.moveSLToEntry,
         daysHighLow: this.config.daysHighLow,
         bufferPercentage: this.config.bufferPercentage,
         riskAmountInr: this.config.riskAmountInr,
@@ -111,6 +113,10 @@ export class ConfigComponent implements OnInit, OnDestroy, CanDeactivate<ConfigC
         placeTargetStopLossDailyTime: this.config.taskSchedules.placeTargetStopLoss.dailyTime,
         updateTrailingStopLossEnabled: this.config.taskSchedules.updateTrailingStopLoss.enabled,
         updateTrailingStopLossDailyTime: this.config.taskSchedules.updateTrailingStopLoss.dailyTime,
+        cleanupTargetOrdersEnabled: this.config.taskSchedules.cleanupTargetOrders.enabled,
+        cleanupTargetOrdersDailyTime: this.config.taskSchedules.cleanupTargetOrders.dailyTime,
+        moveSLToEntryEnabled: this.config.taskSchedules.moveSLToEntry.enabled,
+        moveSLToEntryScheduleType: this.config.taskSchedules.moveSLToEntry.scheduleType,
         schedulerEnabled: this.config.schedulerEnabled
       });
 
