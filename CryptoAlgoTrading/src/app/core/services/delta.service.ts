@@ -485,6 +485,38 @@ export class DeltaService {
   }
 
   /**
+   * Get bracket orders for a specific product
+   * Filters for orders where bracket_order === true AND stop_order_type === 'stop_loss_order'
+   * This is used to prevent duplicate bracket order placement
+   * 
+   * @param productId - The product ID to fetch bracket orders for
+   * @returns Array of bracket orders matching the criteria
+   */
+  async getBracketOrdersForProduct(productId: number): Promise<any[]> {
+    try {
+      const path = `/v2/orders?product_ids=${productId}&state=pending`;
+      this.debug.log(`Fetching bracket orders for product ${productId}: ${path}`);
+
+      const response = await this.authenticatedRequest('GET', path, undefined, this.baseUrl);
+      const allOrders = Array.isArray(response) ? response : (response?.result || response?.data || []);
+
+      // Filter for actual bracket orders: bracket_order === true AND stop_order_type === 'stop_loss_order'
+      const bracketOrders = allOrders.filter((order: any) => {
+        return order.bracket_order === true && order.stop_order_type === 'stop_loss_order';
+      });
+
+      this.debug.log(
+        `getBracketOrdersForProduct returned ${bracketOrders?.length || 0} bracket orders for product ${productId}`
+      );
+
+      return bracketOrders || [];
+    } catch (error: any) {
+      this.debug.error(`getBracketOrdersForProduct error for product ${productId}:`, error);
+      return [];
+    }
+  }
+
+  /**
    * Cancel limit orders for a specific product
    * Cancels all existing limit orders before placing new hedge orders
    * 
@@ -809,6 +841,197 @@ export class DeltaService {
     } catch (error: any) {
       this.debug.error('cancelPendingOrders error:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Cleanup target orders - Cancel limit orders based on position matching
+   * This method:
+   * 1. Fetches all open positions to identify active symbols and their sides
+   * 2. Gets all pending orders
+   * 3. Filters for limit orders (order_type === 'limit_order' AND bracket_order is null/false)
+   * 4. Determines side matching:
+   *    - If NO position exists for symbol: cancel the order
+   *    - If position exists but sides match (buy==buy or sell==sell): cancel the order
+   *    - If position exists but sides DON'T match (buy!=sell): keep the order
+   */
+  async cleanupTargetOrders(): Promise<{ cancelled: number; total: number; details: any[] }> {
+    try {
+      // Step 1: Fetch all open positions to get symbols with active trades and their sides
+      this.debug.log('Step 1: Fetching open positions...');
+      const positions = await this.getPositions();
+
+      // Create a map of symbol => position side
+      // Position side is determined by size: positive = long (buy), negative = short (sell)
+      const positionMap = new Map<string, { side: 'buy' | 'sell'; size: number }>();
+      positions.forEach(p => {
+        const symbol = (p.product_symbol || p.symbol || '').toUpperCase();
+        const size = parseFloat(p.size || '0');
+
+        if (symbol.length > 0 && size !== 0) {
+          const side = size > 0 ? 'buy' : 'sell';
+          positionMap.set(symbol, { side, size });
+          this.debug.log(`Position found: ${symbol} - Side: ${side}, Size: ${size}`);
+        }
+      });
+
+      this.debug.log(`Found ${positionMap.size} symbols with open positions`, 
+        Array.from(positionMap.entries()).map(([s, p]) => ({ symbol: s, side: p.side, size: p.size }))
+      );
+
+      // Step 2: Fetch all pending limit orders using optimized API endpoint
+      this.debug.log('Step 2: Fetching all pending limit orders...');
+
+      // Use the optimized endpoint to get limit orders directly
+      // GET /v2/orders?contract_types=perpetual_futures&order_types=limit&state=open&page_size=100
+      // From response, filter: order_type === 'limit_order' AND stop_order_type === null
+      const pageSize = 100;
+      const ordersPath = `/v2/orders?contract_types=perpetual_futures&order_types=limit&state=open&page_size=${pageSize}`;
+
+      let allOrders: any[] = [];
+      try {
+        const ordersResponse = await this.authenticatedRequest('GET', ordersPath, undefined, this.baseUrl);
+
+        // Extract orders from response - handle different response formats
+        const responseOrders = ordersResponse?.result || ordersResponse?.orders || ordersResponse || [];
+
+        // Filter to only get limit orders (not stop orders)
+        // Condition: order_type === 'limit_order' AND stop_order_type === null
+        const filteredOrders = (Array.isArray(responseOrders) ? responseOrders : []).filter((order: any) => {
+          const isLimitOrder = order.order_type === 'limit_order';
+          const isNotStopOrder = order.stop_order_type === null || order.stop_order_type === undefined;
+          return isLimitOrder && isNotStopOrder;
+        });
+
+        allOrders = filteredOrders;
+        this.debug.log(`Fetched ${responseOrders?.length || 0} total orders from API, filtered to ${filteredOrders.length} pure limit orders`,
+          filteredOrders.map((o: any) => ({ 
+            id: o.id, 
+            product_id: o.product_id, 
+            symbol: o.symbol, 
+            order_type: o.order_type,
+            stop_order_type: o.stop_order_type,
+            side: o.side,
+            bracket_order: o.bracket_order
+          }))
+        );
+      } catch (error: any) {
+        this.debug.error('Error fetching limit orders from optimized endpoint:', error);
+        // Return early with no orders if fetch fails
+        return { cancelled: 0, total: 0, details: [] };
+      }
+
+      if (allOrders.length === 0) {
+        this.debug.log('No pending limit orders found to cleanup');
+        return { cancelled: 0, total: 0, details: [] };
+      }
+
+      this.debug.log(`Found ${allOrders.length} pending limit orders ready for cleanup`);
+
+      // Step 3: These orders are already filtered for limit orders, so we can proceed directly to side matching
+      const limitOrders = allOrders;
+
+      // Step 4: Determine which limit orders to cancel based on position matching
+      // Cancel if:
+      // - NO position exists for the symbol, OR
+      // - Position exists AND sides match (both buy or both sell)
+      // Keep if:
+      // - Position exists AND sides DON'T match (opposite directions = hedge)
+      const ordersToCancel = limitOrders.filter(order => {
+        const orderSymbol = (order.product_symbol || '').toUpperCase();
+        const orderSide = order.side ? order.side.toLowerCase() : 'buy';
+        const positionData = positionMap.get(orderSymbol);
+
+        // Case 1: No position exists - cancel this orphaned order
+        if (!positionData) {
+          this.debug.log(`Order ${order.id} (${orderSymbol}, ${orderSide}): NO position found - WILL CANCEL (orphaned)`);
+          return true;
+        }
+
+        // Case 2: Position exists - check if sides match
+        const positionSide = positionData.side;
+        const sidesMatch = orderSide === positionSide;
+
+        if (sidesMatch) {
+          // Same side = cancel (conflicting directions)
+          this.debug.log(`Order ${order.id} (${orderSymbol}): Position side=${positionSide}, Order side=${orderSide} - SIDES MATCH - WILL CANCEL`);
+          return true;
+        } else {
+          // Opposite sides = keep (hedge position)
+          this.debug.log(`Order ${order.id} (${orderSymbol}): Position side=${positionSide}, Order side=${orderSide} - SIDES DON'T MATCH - KEEP (hedge)`);
+          return false;
+        }
+      });
+
+      this.debug.log(`After filtering: ${ordersToCancel.length} limit orders to cancel out of ${limitOrders.length} total limit orders`);
+
+      if (ordersToCancel.length === 0) {
+        this.debug.log('No limit orders to cancel - all limit orders either have hedging purposes or matching positions');
+        return { cancelled: 0, total: limitOrders.length, details: [] };
+      }
+
+      // Step 5: Cancel each orphaned limit order individually using DELETE /v2/orders
+      let cancelledCount = 0;
+      const cancelledDetails: any[] = [];
+
+      for (const order of ordersToCancel) {
+        try {
+          const payload = {
+            id: order.id,
+            product_id: order.product_id
+          };
+
+          const orderSide = order.side ? order.side.toLowerCase() : 'buy';
+          const positionData = positionMap.get((order.symbol || '').toUpperCase());
+          const reason = !positionData 
+            ? 'orphaned (no position)' 
+            : `side conflict (position: ${positionData.side}, order: ${orderSide})`;
+
+          this.debug.log(`Cancelling limit order ${order.id} for symbol ${order.symbol} (${reason}) with payload:`, payload);
+
+          // Use DELETE /v2/orders with payload
+          const result = await this.authenticatedRequest('DELETE', '/v2/orders', payload, this.baseUrl);
+          this.debug.log(`✅ Order ${order.id} cancelled successfully`, result);
+          cancelledCount++;
+          cancelledDetails.push({
+            orderId: order.id,
+            symbol: order.symbol,
+            orderSide,
+            positionSide: positionData?.side || 'no_position',
+            status: 'cancelled',
+            reason,
+            productId: order.product_id
+          });
+        } catch (error: any) {
+          this.debug.error(`❌ Failed to cancel order ${order.id}:`, error);
+          const orderSide = order.side ? order.side.toLowerCase() : 'buy';
+          const positionData = positionMap.get((order.symbol || '').toUpperCase());
+          const reason = !positionData 
+            ? 'orphaned (no position)' 
+            : `side conflict (position: ${positionData.side}, order: ${orderSide})`;
+
+          cancelledDetails.push({
+            orderId: order.id,
+            symbol: order.symbol,
+            orderSide,
+            positionSide: positionData?.side || 'no_position',
+            status: 'failed',
+            reason,
+            error: error?.message || 'Unknown error',
+            productId: order.product_id
+          });
+        }
+      }
+
+      this.debug.log(`✅ Successfully cleaned up ${cancelledCount}/${ordersToCancel.length} target orders`);
+      return { 
+        cancelled: cancelledCount, 
+        total: ordersToCancel.length, 
+        details: cancelledDetails 
+      };
+    } catch (error: any) {
+      this.debug.error('cleanupTargetOrders error:', error);
+      throw error;
     }
   }
 

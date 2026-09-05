@@ -26,6 +26,10 @@
         <span *ngIf="!loadingLimitOrderCandidates">📥 Place Limit order</span>
         <span *ngIf="loadingLimitOrderCandidates">⏳ Loading...</span>
       </button>
+      <button (click)="cleanupOrders()" [disabled]="loading || cleaningUpOrders" class="btn-secondary" style="margin-left:12px" title="Cancel stale limit orders that don't have corresponding open positions">
+        <span *ngIf="!cleaningUpOrders">🧹 Cleanup Target Orders</span>
+        <span *ngIf="cleaningUpOrders">⏳ Cleaning...</span>
+      </button>
       <label class="filter-label" style="margin-left:20px;">
         <span>Minimum Price (₹)</span>
         <input type="number" [(ngModel)]="minPrice" (ngModelChange)="onPriceFilterChange()" min="0" step="0.1" class="filter-input" />
@@ -34,6 +38,31 @@
   </header>
 
   <main class="main-content">
+    <!-- Cleanup Status Messages -->
+    <div *ngIf="cleanupError" class="alert alert-error" style="margin-bottom: 20px;">
+      <span class="alert-icon">⚠️</span>
+      <div class="alert-content">
+        <strong>Cleanup Error</strong>
+        <p>{{ cleanupError }}</p>
+      </div>
+    </div>
+
+    <div *ngIf="cleanupSuccess" class="alert alert-success" style="margin-bottom: 20px;">
+      <span class="alert-icon">✅</span>
+      <div class="alert-content">
+        <strong>Cleanup Complete</strong>
+        <p>{{ cleanupSuccess }}</p>
+        <div *ngIf="cleanupResults && cleanupResults.details && cleanupResults.details.length > 0" class="cleanup-details" style="margin-top: 10px; font-size: 0.9em;">
+          <div *ngFor="let detail of cleanupResults.details" class="cleanup-detail-item">
+            <span [class.cancelled]="detail.status === 'cancelled'" [class.failed]="detail.status === 'failed'">
+              {{ detail.symbol }} (Order #{{ detail.orderId }}): {{ detail.status === 'cancelled' ? '✅ Cancelled' : '❌ Failed' }}
+              <span *ngIf="detail.error" class="error-msg">{{ detail.error }}</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div *ngIf="!items.length && !loading" class="empty-state">
       <div class="empty-icon">📭</div>
       <h2>No Results Yet</h2>

@@ -104,7 +104,7 @@ export class TargetStopLossManagerService {
     try {
       // Step 1: Check if target/stop loss orders already exist for this product
       const existingOrders = await this.checkExistingOrders(productId);
-      const hasExistingOrders = existingOrders && existingOrders.length > 1;
+      const hasExistingOrders = existingOrders && existingOrders.length > 0;
 
       this.logger.debug(`Existing orders for ${symbol}:`, {
         count: existingOrders?.length || 0,
@@ -330,46 +330,46 @@ export class TargetStopLossManagerService {
   }
 
   /**
-   * Check if there are existing pending orders for a product
-   * Uses DeltaService.getPendingOrdersForProduct() to fetch pending orders
-   * This method with query parameters is more efficient and reliable
+   * Check if there are existing bracket orders for a product
+   * Uses DeltaService.getBracketOrdersForProduct() to fetch bracket orders
+   * This method filters for bracket_order === true AND stop_order_type === 'stop_loss_order'
    * 
-   * CRITICAL: When orders exist, we MUST SKIP placement to avoid duplication
+   * CRITICAL: When bracket orders exist, we MUST SKIP placement to avoid duplication
    */
   private async checkExistingOrders(productId: number): Promise<any[]> {
     try {
-      this.logger.debug(`Checking existing orders for product_id: ${productId}`);
+      this.logger.debug(`Checking existing bracket orders for product_id: ${productId}`);
 
-      // Use the new public method in DeltaService that uses query parameters
-      // API: GET /v2/orders?product_ids={productId}&state=pending
-      const existingOrders = await this.deltaService.getPendingOrdersForProduct(productId);
+      // Use getBracketOrdersForProduct to check for actual bracket orders only
+      // This filters for: bracket_order === true AND stop_order_type === 'stop_loss_order'
+      const bracketOrders = await this.deltaService.getBracketOrdersForProduct(productId);
 
-      this.logger.debug(`Got response from getPendingOrdersForProduct for product ${productId}:`, {
-        ordersCount: existingOrders?.length || 0
+      this.logger.debug(`Got response from getBracketOrdersForProduct for product ${productId}:`, {
+        ordersCount: bracketOrders?.length || 0
       });
 
-      const orderCount = existingOrders?.length || 0;
+      const orderCount = bracketOrders?.length || 0;
 
       this.logger.info(
-        `Product ${productId}: Found ${orderCount} pending orders`
+        `Product ${productId}: Found ${orderCount} bracket order(s)`
       );
 
-      // CRITICAL DECISION: If ANY pending orders exist, we must skip placement
+      // CRITICAL DECISION: If ANY bracket orders exist, we must skip placement
       // This prevents duplicate orders and "bracket_order_exists" errors
       if (orderCount > 0) {
         this.logger.warn(
-          `⚠️ SKIPPING Product ${productId} - Has ${orderCount} EXISTING pending order(s) - Will NOT place duplicate orders`
+          `⚠️ SKIPPING Product ${productId} - Has ${orderCount} EXISTING bracket order(s) - Will NOT place duplicate orders`
         );
-        return existingOrders;
+        return bracketOrders;
       } else {
         this.logger.info(
-          `✅ OK to place: Product ${productId} has NO pending orders - Safe to place new orders`
+          `✅ OK to place: Product ${productId} has NO bracket orders - Safe to place new orders`
         );
         return [];
       }
     } catch (error: any) {
       this.logger.error(
-        `CRITICAL ERROR checking existing orders for product ${productId}: ${error?.message}`,
+        `CRITICAL ERROR checking existing bracket orders for product ${productId}: ${error?.message}`,
         error
       );
       // On error, return empty array (assume no orders) - this is safe default
