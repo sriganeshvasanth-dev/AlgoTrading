@@ -31,11 +31,11 @@ export class PAndLComponent implements OnInit, OnDestroy {
   startDate: string = this.getDefaultStartDate();
   endDate: string = this.getDefaultEndDate();
 
-  // Data source selection
-  dataSource: 'fills' | 'transactions' = 'fills'; // Toggle between fills-based and transactions-based P&L
+  // Data source selection - DEFAULT: Wallet transactions
+  dataSource: 'fills' | 'transactions' = 'transactions'; // Toggle between fills-based and transactions-based P&L
 
-  // Transaction type filter (only for wallet transactions)
-  selectedTransactionTypes: string[] = []; // Empty = all types
+  // Transaction type filter (only for wallet transactions) - DEFAULT: cashflow only
+  selectedTransactionTypes: string[] = ['cashflow']; // Default to cashflow
   transactionTypeOptions = [
     { value: 'cashflow', label: 'Cashflow - Generic cash credit or debit' },
     { value: 'deposit', label: 'Deposit - Funds deposited into the wallet' },
@@ -112,11 +112,11 @@ export class PAndLComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Get default start date (30 days ago)
+   * Get default start date (7 days ago - Last 7 Days)
    */
   private getDefaultStartDate(): string {
     const date = new Date();
-    date.setDate(date.getDate() - 30);
+    date.setDate(date.getDate() - 7); // Changed from 30 to 7
     return date.toISOString().split('T')[0];
   }
 
@@ -279,25 +279,42 @@ export class PAndLComponent implements OnInit, OnDestroy {
       type: 'date',
       expanded: false,
       data: date,
-      children: this.buildTreeFromSymbols(date.symbols, `${parentId}-date-${idx}`)
+      children: this.buildTreeFromSymbols(date.symbols, `${parentId}-date-${idx}`, date.date, date.createdAt)
     }));
   }
 
   /**
    * Build tree nodes from symbol data
    */
-  private buildTreeFromSymbols(symbols: any[], parentId: string): TreeNode[] {
-    return symbols.map((symbol, idx) => ({
-      id: `${parentId}-symbol-${idx}`,
-      label: `Symbol: ${symbol.symbol}`,
-      pnl: symbol.pnl,
-      fees: symbol.fees,
-      netPnL: symbol.netPnL,
-      type: 'symbol',
-      expanded: false,
-      data: symbol,
-      children: [] // Symbols are leaf nodes
-    }));
+  private buildTreeFromSymbols(symbols: any[], parentId: string, dateStr: string = '', createdAt: string = ''): TreeNode[] {
+    return symbols.map((symbol, idx) => {
+      // Calculate entry/exit prices and quantity
+      const entryPrice = this.calculateAverageEntryPrice(symbol.buys);
+      const exitPrice = this.calculateAverageExitPrice(symbol.sells);
+      const quantity = this.calculateTotalQuantity(symbol.buys);
+
+      // Use symbol's own createdAt if available (from transaction metadata), otherwise use date's createdAt
+      const symbolCreatedAt = symbol.createdAt || createdAt;
+
+      return {
+        id: `${parentId}-symbol-${idx}`,
+        label: `Symbol: ${symbol.symbol}`,
+        pnl: symbol.pnl,
+        fees: symbol.fees,
+        netPnL: symbol.netPnL,
+        type: 'symbol',
+        expanded: false,
+        data: { 
+          ...symbol, 
+          dateStr, 
+          createdAt: symbolCreatedAt, // Use symbol-specific timestamp if available
+          entryPrice,
+          exitPrice,
+          quantity
+        }, // Add dateStr, createdAt (symbol-specific), and trading details to symbol data
+        children: [] // Symbols are leaf nodes
+      };
+    });
   }
 
   /**
@@ -352,6 +369,36 @@ export class PAndLComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Format date string (YYYY-MM-DD) and optional ISO timestamp to readable format with time
+   * @param dateStr YYYY-MM-DD format date string
+   * @param createdAt Optional ISO timestamp string (e.g., 2024-01-15T14:30:45Z)
+   * @returns Formatted string like "Mon, Jan 15, 2024, 2:30 PM"
+   */
+  formatDateTime(dateStr: string, createdAt?: string): string {
+    if (!dateStr) return '';
+    try {
+      // Use createdAt if available, otherwise just use dateStr
+      const dateToFormat = createdAt || dateStr;
+      const date = new Date(dateToFormat);
+
+      const formatter = new Intl.DateTimeFormat('en-IN', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+
+      return formatter.format(date);
+    } catch {
+      return dateStr;
+    }
+  }
+
+  /**
    * Get CSS class for P&L value (profit or loss)
    */
   getPnLClass(pnl: number): string {
@@ -400,5 +447,63 @@ export class PAndLComponent implements OnInit, OnDestroy {
     this.startDate = start.toISOString().split('T')[0];
     this.endDate = today.toISOString().split('T')[0];
     this.loadPnLData();
+  }
+
+  /**
+   * Calculate average entry price from buy fills
+   * @param buys Array of buy Fill objects
+   * @returns Average entry price or 0 if no buys
+   */
+  calculateAverageEntryPrice(buys: any[]): number {
+    if (!buys || buys.length === 0) return 0;
+    const totalCost = buys.reduce((sum, fill) => sum + (parseFloat(fill.price) * fill.size), 0);
+    const totalSize = buys.reduce((sum, fill) => sum + fill.size, 0);
+    return totalSize > 0 ? totalCost / totalSize : 0;
+  }
+
+  /**
+   * Calculate average exit price from sell fills
+   * @param sells Array of sell Fill objects
+   * @returns Average exit price or 0 if no sells
+   */
+  calculateAverageExitPrice(sells: any[]): number {
+    if (!sells || sells.length === 0) return 0;
+    const totalRevenue = sells.reduce((sum, fill) => sum + (parseFloat(fill.price) * fill.size), 0);
+    const totalSize = sells.reduce((sum, fill) => sum + fill.size, 0);
+    return totalSize > 0 ? totalRevenue / totalSize : 0;
+  }
+
+  /**
+   * Calculate total quantity from buy fills
+   * @param buys Array of buy Fill objects
+   * @returns Total quantity traded
+   */
+  calculateTotalQuantity(buys: any[]): number {
+    if (!buys || buys.length === 0) return 0;
+    return buys.reduce((sum, fill) => sum + fill.size, 0);
+  }
+
+  /**
+   * Format price with 8 decimal places for cryptocurrency
+   * @param price Price value to format
+   * @returns Formatted price string
+   */
+  formatPrice(price: number): string {
+    if (!price || price === 0) return '0.00000000';
+    return price.toFixed(8).replace(/\.?0+$/, '');
+  }
+
+  /**
+   * Format quantity with appropriate decimal places
+   * @param quantity Quantity value to format
+   * @returns Formatted quantity string
+   */
+  formatQuantity(quantity: number): string {
+    if (!quantity || quantity === 0) return '0';
+    // If quantity is very small, show more decimals, otherwise limit to 8
+    if (quantity < 0.00001) {
+      return quantity.toExponential(4);
+    }
+    return quantity.toFixed(8).replace(/\.?0+$/, '');
   }
 }

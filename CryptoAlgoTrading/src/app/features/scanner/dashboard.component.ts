@@ -66,6 +66,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   isScheduledExecution = false; // Flag to indicate if execution is from scheduler
   appInitialized = false; // Flag to prevent task execution during app initialization
 
+  // Cleanup target orders properties
+  cleaningUpOrders = false;
+  cleanupError: string | null = null;
+  cleanupSuccess: string | null = null;
+  cleanupResults: { cancelled: number; total: number; details: any[] } | null = null;
+
   private destroy$ = new Subject<void>();
 
   constructor(
@@ -783,6 +789,61 @@ export class DashboardComponent implements OnInit, OnDestroy {
 		this.limitOrderError = null;
 		this.limitOrderSuccess = null;
 		this.cdr.markForCheck();
+	}
+
+	/**
+	 * Cleanup target orders - Cancel limit orders that don't have corresponding open positions
+	 */
+	async cleanupOrders(): Promise<void> {
+		try {
+			this.cleaningUpOrders = true;
+			this.cleanupError = null;
+			this.cleanupSuccess = null;
+			this.cleanupResults = null;
+			this.cdr.markForCheck();
+
+			console.log('🧹 Starting cleanup of target orders...');
+
+			// Call the cleanup service method
+			const results = await this.svc.cleanupTargetOrders();
+
+			console.log('🧹 Cleanup results:', results);
+
+			// Store results
+			this.cleanupResults = results;
+
+			// Set success message
+			if (results.cancelled === 0 && results.total === 0) {
+				this.cleanupSuccess = 'No stale limit orders found. All limit orders have corresponding open positions.';
+			} else if (results.cancelled === 0) {
+				this.cleanupSuccess = `Scan complete. All ${results.total} limit order(s) have corresponding open positions.`;
+			} else {
+				this.cleanupSuccess = `✅ Successfully cleaned up ${results.cancelled} out of ${results.total} stale limit orders.`;
+			}
+
+			console.log('✅ Cleanup completed:', this.cleanupSuccess);
+			this.cdr.markForCheck();
+
+			// Auto-clear success message after 5 seconds
+			setTimeout(() => {
+				this.cleanupSuccess = null;
+				this.cdr.markForCheck();
+			}, 5000);
+
+		} catch (error: any) {
+			console.error('❌ Cleanup error:', error);
+			this.cleanupError = error?.message || 'Failed to cleanup target orders. Please check the console for details.';
+			this.cdr.markForCheck();
+
+			// Auto-clear error message after 5 seconds
+			setTimeout(() => {
+				this.cleanupError = null;
+				this.cdr.markForCheck();
+			}, 5000);
+		} finally {
+			this.cleaningUpOrders = false;
+			this.cdr.markForCheck();
+		}
 	}
 
 	private async checkSymbolBreakout(ticker: any) {

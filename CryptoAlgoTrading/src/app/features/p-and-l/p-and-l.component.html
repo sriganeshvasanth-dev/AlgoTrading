@@ -234,35 +234,59 @@
                 <!-- Symbol Nodes -->
                 <div *ngIf="date.expanded" class="children-container">
                   <div *ngFor="let symbol of date.children" class="tree-node" [attr.data-level]="'symbol'">
-                    <!-- Symbol Node (Leaf) -->
-                    <div class="node-content leaf">
-                      <span class="node-icon">{{ getNodeIcon(symbol) }}</span>
-                      <span class="node-label">{{ symbol.label }}</span>
-                      <div class="node-values">
-                        <span class="pnl" [ngClass]="getPnLClass(symbol.pnl)">
-                          {{ formatCurrency(symbol.pnl) }}
-                        </span>
-                        <span class="fees">
-                          Fees: {{ formatCurrency(symbol.fees) }}
-                        </span>
-                        <span class="net-pnl" [ngClass]="getPnLClass(symbol.netPnL)">
-                          Net: {{ formatCurrency(symbol.netPnL) }}
-                        </span>
+                    <!-- Symbol Node (Leaf) - Professional Card Layout -->
+                    <div class="symbol-card">
+                      <!-- Left Section: Symbol Header -->
+                      <div class="symbol-header">
+                        <span class="symbol-icon">{{ getNodeIcon(symbol) }}</span>
+                        <div class="symbol-info">
+                          <span class="symbol-name">{{ symbol.label }}</span>
+                        </div>
                       </div>
 
-                      <!-- Symbol Details -->
-                      <div class="symbol-details" *ngIf="symbol.data">
-                        <div class="detail-row">
-                          <span class="detail-label">Buys:</span>
-                          <span class="detail-value">{{ symbol.data.buys?.length || 0 }}</span>
+                      <!-- Middle Section: P&L Summary -->
+                      <div class="pnl-summary">
+                        <div class="summary-badge">
+                          <span class="badge-label">P&L</span>
+                          <span class="badge-value" [ngClass]="getPnLClass(symbol.pnl)">
+                            {{ formatCurrency(symbol.pnl) }}
+                          </span>
                         </div>
-                        <div class="detail-row">
-                          <span class="detail-label">Sells:</span>
-                          <span class="detail-value">{{ symbol.data.sells?.length || 0 }}</span>
+                        <div class="summary-badge">
+                          <span class="badge-label">Fees</span>
+                          <span class="badge-value fees">{{ formatCurrency(symbol.fees) }}</span>
                         </div>
-                        <div class="detail-row">
-                          <span class="detail-label">Total Trades:</span>
-                          <span class="detail-value">{{ symbol.data.fillCount || 0 }}</span>
+                        <div class="summary-badge">
+                          <span class="badge-label">Net</span>
+                          <span class="badge-value" [ngClass]="getPnLClass(symbol.netPnL)">
+                            {{ formatCurrency(symbol.netPnL) }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <!-- Right Section: Trading Details -->
+                      <div class="trading-details" *ngIf="symbol.data">
+                        <div class="detail-item">
+                          <span class="detail-label">Date & Time:</span>
+                          <span class="detail-value">{{ formatDateTime(symbol.data.dateStr, symbol.data.createdAt) }}</span>
+                        </div>
+                        <div class="detail-item" *ngIf="symbol.data.quantity && symbol.data.quantity > 0">
+                          <span class="detail-label">Quantity:</span>
+                          <span class="detail-value">{{ formatQuantity(symbol.data.quantity) }}</span>
+                        </div>
+                        <div class="detail-item" *ngIf="symbol.data.entryPrice && symbol.data.entryPrice > 0">
+                          <span class="detail-label">Entry Price:</span>
+                          <span class="detail-value">{{ formatPrice(symbol.data.entryPrice) }}</span>
+                        </div>
+                        <div class="detail-item" *ngIf="symbol.data.exitPrice && symbol.data.exitPrice > 0">
+                          <span class="detail-label">Exit Price:</span>
+                          <span class="detail-value">{{ formatPrice(symbol.data.exitPrice) }}</span>
+                        </div>
+                        <div class="detail-item" *ngIf="symbol.data.entryPrice > 0 && symbol.data.exitPrice > 0">
+                          <span class="detail-label">Difference:</span>
+                          <span class="detail-value" [ngClass]="getPnLClass(symbol.data.exitPrice - symbol.data.entryPrice)">
+                            {{ formatPrice(symbol.data.exitPrice - symbol.data.entryPrice) }}
+                          </span>
                         </div>
                       </div>
                     </div>
