@@ -285,14 +285,16 @@ export class DeltaService {
 
               this.debug.log(`DeltaService: Processing position ${symbol}`, { size: sizeValue, raw: p });
 
-              const ticker = symbol ? await this.getTicker(symbol) : null;
-              const markPrice = ticker?.mark_price ?? ticker?.close ?? ticker?.last_price ?? 0;
+              // Get mark_price directly from position object (no need for getTicker call)
+              const markPrice = parseFloat(p.mark_price || 0);
               const entryPrice = parseFloat(p.entry_price || p.average_entry_price || 0);
 
-              let pnl = 0;
+              // Get PnL from API response (unrealized_pnl or unrealized_cashflow)
+              const pnl = parseFloat(p.unrealized_pnl || p.unrealized_cashflow || 0);
+
+              // Calculate PnL percentage from entry price and mark price
               let pnlPercentage = 0;
-              if (markPrice > 0 && entryPrice > 0 && sizeValue !== 0) {
-                pnl = (markPrice - entryPrice) * sizeValue;
+              if (entryPrice > 0 && markPrice > 0) {
                 pnlPercentage = ((markPrice - entryPrice) / entryPrice) * 100;
               }
 
@@ -301,7 +303,7 @@ export class DeltaService {
                 symbol: symbol || `Product ${p.product_id}`,
                 size: sizeValue,
                 entry_price: entryPrice,
-                mark_price: parseFloat(markPrice),
+                mark_price: markPrice,
                 pnl,
                 pnl_percentage: pnlPercentage,
                 leverage: p.leverage || 1,
@@ -353,14 +355,16 @@ export class DeltaService {
             const sizeNum = parseFloat(size);
 
             if (Math.abs(sizeNum) > 0) {
-              const ticker = await this.getTicker(product.symbol);
-              const markPrice = ticker?.mark_price ?? ticker?.close ?? ticker?.last_price ?? 0;
+              // Get mark_price directly from position object (no need for getTicker call)
+              const markPrice = parseFloat(p.mark_price || 0);
               const entryPrice = parseFloat(p.entry_price || p.average_entry_price || p.buy_price || 0);
 
-              let pnl = 0;
+              // Get PnL from API response (unrealized_pnl or unrealized_cashflow)
+              const pnl = parseFloat(p.unrealized_pnl || p.unrealized_cashflow || 0);
+
+              // Calculate PnL percentage from entry price and mark price
               let pnlPercentage = 0;
-              if (markPrice > 0 && entryPrice > 0) {
-                pnl = (markPrice - entryPrice) * sizeNum;
+              if (entryPrice > 0 && markPrice > 0) {
                 pnlPercentage = ((markPrice - entryPrice) / entryPrice) * 100;
               }
 
@@ -369,11 +373,11 @@ export class DeltaService {
                 symbol: product.symbol || p.product_symbol || p.symbol || `Product ${productId}`,
                 size: sizeNum,
                 entry_price: entryPrice,
-                mark_price: parseFloat(markPrice),
+                mark_price: markPrice,
                 pnl,
                 pnl_percentage: pnlPercentage,
                 liquidation_price: parseFloat(p.liquidation_price || p.bankruptcy_price || 0),
-                leverage: parseFloat(p.leverage || p.user_leverage || ticker?.leverage || 0),
+                leverage: parseFloat(p.leverage || p.user_leverage || 0),
                 margin: parseFloat(p.margin || p.position_margin || (entryPrice * Math.abs(sizeNum)) / (p.leverage || 1) || 0),
                 product_id: productId
               });
@@ -753,6 +757,94 @@ export class DeltaService {
     } catch (error: any) {
       this.debug.error('getBracketOrder error:', error);
       return null;
+    }
+  }
+
+  /**
+   * Fetch stop-loss orders for a specific symbol
+   * Uses API endpoint: GET /v2/orders?contract_types=perpetual_futures&page_size=100&order_types=stop_limit
+   * Filters for orders matching:
+   * - product_symbol: {symbol}
+   * - stop_order_type: "stop_loss_order"
+   * - order_type: "limit_order"
+   * 
+   * @param symbol - The symbol to fetch stop-loss orders for (e.g., "BTCUSDT")
+   * @returns Array of matching stop-loss orders
+   */
+  async getStopLossOrdersForSymbol(symbol: string): Promise<any[]> {
+    try {
+      const symbolUpperCase = symbol.toUpperCase();
+      this.debug.log(`Fetching stop-loss orders for symbol: ${symbolUpperCase}`);
+
+      // Use API endpoint for stop_limit orders
+      const pageSize = 10000;
+      const ordersPath = `/v2/orders?contract_types=perpetual_futures&page_size=${pageSize}&order_types=stop_limit`;
+
+      const result = await this.authenticatedRequest('GET', ordersPath, undefined, this.baseUrl);
+
+      // Handle different response formats
+      let orders = Array.isArray(result) ? result : (result?.orders || result?.result || []);
+      this.debug.log(`Total stop_limit orders fetched: ${orders.length}`);
+
+      // Filter for stop-loss orders matching our criteria:
+      // 1. product_symbol matches the target symbol
+      // 2. stop_order_type === "stop_loss_order"
+      // 3. order_type === "limit_order"
+      const stopLossOrders = orders.filter((order: any) => {
+        const orderSymbol = (order.product_symbol || order.symbol || '').toUpperCase();
+        const isStopLossOrder = order.stop_order_type === 'stop_loss_order';
+        const isLimitOrder = order.order_type === 'limit_order';
+
+        const matches = orderSymbol === symbolUpperCase && isStopLossOrder && isLimitOrder;
+
+        if (matches) {
+          this.debug.log(`✓ Found matching stop-loss order:`, {
+            id: order.id,
+            symbol: orderSymbol,
+            stop_order_type: order.stop_order_type,
+            order_type: order.order_type,
+            stop_price: order.stop_price,
+            limit_price: order.limit_price,
+            state: order.state
+          });
+        }
+
+        return matches;
+      });
+
+      this.debug.log(`Filtered to ${stopLossOrders.length} stop-loss orders for ${symbolUpperCase}`);
+      return stopLossOrders;
+    } catch (error: any) {
+      this.debug.error(`Error fetching stop-loss orders for symbol ${symbol}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Cancel a specific stop-loss order by ID
+   * Uses API endpoint: DELETE /v2/orders with payload containing id, client_order_id, and product_id
+   * 
+   * @param orderId - The order ID to cancel
+   * @param productId - The product ID associated with the order
+   * @param clientOrderId - Optional client order ID (falls back to generated ID if not provided)
+   * @returns True if cancellation succeeded, false otherwise
+   */
+  async cancelStopLossOrder(orderId: number, productId: number, clientOrderId?: string): Promise<boolean> {
+    try {
+      const payload = {
+        id: orderId,        
+        product_id: productId
+      };
+
+      this.debug.log(`Cancelling stop-loss order ${orderId} with payload:`, payload);
+
+      const result = await this.authenticatedRequest('DELETE', '/v2/orders', payload, this.baseUrl);
+
+      this.debug.log(`✓ Stop-loss order ${orderId} cancelled successfully`, result);
+      return true;
+    } catch (error: any) {
+      this.debug.error(`✗ Failed to cancel stop-loss order ${orderId}:`, error);
+      return false;
     }
   }
 
@@ -1209,14 +1301,13 @@ export class DeltaService {
         return { success: false, message: 'No symbol found', symbol: 'Unknown' };
       }
 
-      // Step 1: Get product_id from ticker endpoint
-      this.debug.log(`🔍 Step 1: Getting product_id for ${symbol} from ticker endpoint`);
-      const ticker = await this.getTicker(symbol);
-      if (!ticker || !ticker.product_id) {
-        return { success: false, message: 'Could not get product_id from ticker', symbol };
+      // Step 1: Get product_id from position object (already available, no need for ticker call)
+      this.debug.log(`🔍 Step 1: Getting product_id for ${symbol} from position`);
+      const productId = position.product_id;
+      if (!productId) {
+        return { success: false, message: 'Could not get product_id from position', symbol };
       }
 
-      const productId = ticker.product_id;
       this.debug.log(`✅ Got product_id ${productId} for ${symbol}`);
 
       // Step 2: Query stop_market orders for this product_id
@@ -1721,6 +1812,14 @@ export class DeltaService {
       client_order_id: clientOrderId
     };
 
+    console.log(`[placeLimitBracketOrder] ${input.symbol} - FINAL PAYLOAD:`, {
+      ...payload,
+      side_check: `side='${side}' (type: ${typeof side})`,
+      size_sign: sizeInContracts > 0 ? 'POSITIVE' : 'NEGATIVE',
+      is_buy: side === 'buy',
+      is_sell: side === 'sell'
+    });
+
     this.debug.log('Placing limit bracket order payload:', payload);
 
     const entryOrder = await this.createOrder(payload);
@@ -1853,13 +1952,11 @@ export class DeltaService {
 
       this.debug.log(`🔄 Moving SL to entry price for ${symbol}: Entry=${entryPrice}`);
 
-      // Step 1: Get product_id from ticker
-      const ticker = await this.getTicker(symbol);
-      if (!ticker || !ticker.product_id) {
-        return { success: false, message: 'Could not get product_id from ticker', symbol };
+      // Step 1: Get product_id from position object (already available, no need for ticker call)
+      const productId = position.product_id;
+      if (!productId) {
+        return { success: false, message: 'Could not get product_id from position', symbol };
       }
-
-      const productId = ticker.product_id;
 
       // Step 2: Find the stop loss order
       const path = `/v2/orders?product_ids=${productId}&state=pending&order_types=stop_market`;

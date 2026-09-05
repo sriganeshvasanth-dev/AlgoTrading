@@ -1,0 +1,150 @@
+<div class="results-summary-container" *ngIf="results && results.length > 0">
+  <!-- Summary Header -->
+  <div class="summary-header">
+    <h2>📋 Target & Stop Loss Placement Summary</h2>
+    <div class="summary-stats">
+      <div class="stat" [class.success]="successCount > 0">
+        <span class="label">✅ Success:</span>
+        <span class="value">{{ successCount }}/{{ results.length }}</span>
+      </div>
+      <div class="stat" [class.failed]="failCount > 0">
+        <span class="label">❌ Failed:</span>
+        <span class="value">{{ failCount }}/{{ results.length }}</span>
+      </div>
+      <div class="stat">
+        <span class="label">Success Rate:</span>
+        <span class="value">{{ successPercentage }}%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Cases -->
+  <div class="results-section" *ngIf="successResults.length > 0">
+    <h3>✅ Successfully Placed Orders ({{ successResults.length }})</h3>
+    <div class="results-table-wrapper">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Product ID</th>
+            <th>Quantity</th>
+            <th>Orders Placed</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let result of successResults" class="success-row">
+            <td class="symbol"><strong>{{ result.symbol }}</strong></td>
+            <td class="product-id">{{ result.productId }}</td>
+            <td class="quantity">{{ result.quantity | number: '1.2-2' }}</td>
+            <td class="orders">
+              <span *ngIf="result.bracketOrderResult" class="badge bracket">Bracket Order</span>
+              <span *ngIf="result.halfQuantityTargetResult" class="badge limit">Limit Order (50%)</span>
+            </td>
+            <td class="details">
+              <span *ngIf="result.message" class="message">{{ result.message }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Skipped Cases (Orders Already Exist) -->
+  <div class="results-section" *ngIf="skippedResults.length > 0">
+    <h3>⏭️ Skipped - Orders Already Exist ({{ skippedResults.length }})</h3>
+    <div class="results-table-wrapper">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Product ID</th>
+            <th>Quantity</th>
+            <th>Why Skipped</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let result of skippedResults" class="skipped-row">
+            <td class="symbol"><strong>{{ result.symbol }}</strong></td>
+            <td class="product-id">{{ result.productId }}</td>
+            <td class="quantity">{{ result.quantity | number: '1.2-2' }}</td>
+            <td class="skipped-message">
+              <span class="message">{{ result.message || 'Skipped due to existing orders' }}</span>
+              <div class="action-hint">💡 Cancel existing orders to retry placement</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Failed Cases (Actual Errors) -->
+  <div class="results-section" *ngIf="actualFailResults.length > 0">
+    <h3>❌ Failed to Place Orders ({{ actualFailResults.length }})</h3>
+    <div class="results-table-wrapper">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Product ID</th>
+            <th>Quantity</th>
+            <th>Error Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let result of actualFailResults" class="failure-row">
+            <td class="symbol"><strong>{{ result.symbol }}</strong></td>
+            <td class="product-id">{{ result.productId }}</td>
+            <td class="quantity">{{ result.quantity | number: '1.2-2' }}</td>
+            <td class="error">
+              <span class="error-message">{{ result.error || result.message || 'Unknown error' }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Common Failure Reasons -->
+  <div class="failure-analysis" *ngIf="failResults.length > 0">
+    <h3>📋 Understanding the Results</h3>
+    <div class="result-explanation">
+      <div class="explanation-item">
+        <span class="emoji">✅</span>
+        <div class="text">
+          <strong>Successfully Placed:</strong>
+          Bracket orders (stop loss + take profit) and limit orders (50% quantity) were successfully created on the exchange.
+        </div>
+      </div>
+      <div class="explanation-item">
+        <span class="emoji">⏭️</span>
+        <div class="text">
+          <strong>Skipped (Orders Exist):</strong>
+          This position already has pending target/stop loss orders. The system prevents duplicate orders to avoid conflicts. 
+          <span style="display: block; margin-top: 5px; color: #aaa;"><strong>💡 Action:</strong> Manually cancel the existing orders from your exchange account if you want to place new ones.</span>
+        </div>
+      </div>
+      <div class="explanation-item">
+        <span class="emoji">❌</span>
+        <div class="text">
+          <strong>Failed (Real Errors):</strong>
+          An error occurred while trying to place the orders. Check the error message for details.
+          <span style="display: block; margin-top: 5px; color: #aaa;"><strong>Possible reasons:</strong> Insufficient balance, invalid prices, API limits, or network issues.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="action-buttons">
+    <button (click)="retryFailed()" *ngIf="actualFailResults.length > 0" class="retry-btn">
+      🔄 Retry Failed Orders ({{ actualFailResults.length }})
+    </button>
+    <button (click)="exportResults()" class="export-btn">
+      📥 Export Results
+    </button>
+    <button (click)="closeResults()" class="close-btn">
+      ✕ Close
+    </button>
+  </div>
+</div>

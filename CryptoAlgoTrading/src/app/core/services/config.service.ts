@@ -23,6 +23,9 @@ export interface AppConfig {
   minimumPrice: number;             // Minimum price filter (5)
   topVolumeSymbols: number;         // Top symbols by volume (integer, min 1)
 
+  // Currency Conversion
+  usdToInr: number;                 // USD to INR conversion rate
+
   // Scheduler Configuration (Legacy - kept for backward compatibility)
   schedulerEnabled: boolean;
   schedulerInterval: 1 | 2;         // Hours (1 or 2)
@@ -53,6 +56,7 @@ export class ConfigService {
     targetMultiplier: 4,
     minimumPrice: 5,
     topVolumeSymbols: 80,
+    usdToInr: 85,
     schedulerEnabled: false,
     schedulerInterval: 1,
     scheduledFeatures: {
