@@ -34,10 +34,12 @@ export type SymbolPnL = {
   buys: Fill[];
   sells: Fill[];
   fillCount: number;
+  createdAt?: string; // ISO timestamp of the symbol's first transaction (for wallet transactions mode)
 };
 
 export type DatePnL = {
   date: string; // 'YYYY-MM-DD'
+  createdAt?: string; // ISO timestamp of first fill for the date
   pnl: number;
   fees: number;
   netPnL: number;
@@ -325,6 +327,7 @@ export class PAndLService {
 
       datePnLs.push({
         date,
+        createdAt: dateFills.length > 0 ? dateFills[0].created_at : undefined, // Store first fill's timestamp
         pnl,
         fees,
         netPnL: pnl - fees,
@@ -541,21 +544,71 @@ export class PAndLService {
         // Convert to SymbolPnL format
         const symbols: SymbolPnL[] = [];
         for (const [symbol, pnl] of symbolMap) {
+          // Try to extract entry/exit prices and quantity from metadata
+          const symbolTxns = dateTxns.filter(txn => 
+            (txn.meta_data?.product_symbol || txn.asset_symbol || 'UNKNOWN') === symbol
+          );
+
+          // Build synthetic fills from transaction metadata to support entry/exit calculations
+          const buys: any[] = [];
+          let totalBuyQty = 0;
+          let totalBuyCost = 0;
+          let symbolCreatedAt = ''; // Store individual symbol's timestamp
+
+          for (const txn of symbolTxns) {
+            if (txn.meta_data?.entry_price && txn.meta_data?.position_size) {
+              buys.push({
+                id: txn.id || 0,
+                price: String(txn.meta_data.entry_price),
+                size: Math.abs(parseFloat(txn.meta_data.position_size || '0')),
+                side: 'buy',
+                created_at: txn.created_at,
+                product_symbol: symbol
+              });
+              totalBuyQty += Math.abs(parseFloat(txn.meta_data.position_size || '0'));
+              totalBuyCost += (parseFloat(txn.meta_data.entry_price) * Math.abs(parseFloat(txn.meta_data.position_size || '0')));
+              if (!symbolCreatedAt) symbolCreatedAt = txn.created_at; // Use first transaction's timestamp
+            }
+          }
+
+          const sells: any[] = [];
+          for (const txn of symbolTxns) {
+            if (txn.meta_data?.exit_price) {
+              sells.push({
+                id: txn.id || 0,
+                price: String(txn.meta_data.exit_price),
+                size: Math.abs(parseFloat(txn.meta_data.position_size || '0')),
+                side: 'sell',
+                created_at: txn.created_at,
+                product_symbol: symbol
+              });
+              if (!symbolCreatedAt) symbolCreatedAt = txn.created_at; // Use first transaction's timestamp
+            }
+          }
+
           symbols.push({
             symbol,
             pnl,
             fees: 0,
             netPnL: pnl,
-            buys: [],
-            sells: [],
-            fillCount: txnCount.get(symbol) || 0
+            buys,
+            sells,
+            fillCount: txnCount.get(symbol) || 0,
+            createdAt: symbolCreatedAt // Add timestamp to SymbolPnL for individual symbol tracking
           });
         }
 
         const totalPnL = symbols.reduce((sum, s) => sum + s.pnl, 0);
 
+        // Get the first transaction timestamp for this date
+        let createdAt: string | undefined;
+        if (dateTxns.length > 0) {
+          createdAt = dateTxns[0].created_at;
+        }
+
         datePnLs.push({
           date,
+          createdAt,
           pnl: totalPnL,
           fees: 0,
           netPnL: totalPnL,
