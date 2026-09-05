@@ -213,7 +213,8 @@ export class PositionsComponent implements OnInit, OnDestroy {
     this.cd.markForCheck();
 
     try {
-      const data = await this.deltaService.getPositions();
+      // Use getPositionsRefresh() to bypass cache for manual refresh
+      const data = await this.deltaService.getPositionsRefresh();
       this.positions = data || [];
       this.error = null;
     } catch (err: any) {

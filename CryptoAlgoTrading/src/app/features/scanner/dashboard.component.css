@@ -355,6 +355,11 @@ main.main-content {
 .col-price { width: 120px; }
 .col-3day { width: 120px; }
 
+.col-symbol strong {
+  color: #1f2937;
+  font-weight: 700;
+}
+
 .btn-order {
   background-color: var(--color-success);
   color: white;
