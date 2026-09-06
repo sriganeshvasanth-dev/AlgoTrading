@@ -532,15 +532,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
         console.log('[Dashboard] Config subscription fired, isFirstEmission:', isFirstEmission);
 
         // CRITICAL: Only update task configs for tasks that need changes
-        // Wrap in setTimeout to prevent UI blocking when multiple tasks restart
+        // DO NOT auto-start tasks on config load - tasks should only start via:
+        // 1. User clicks button (manual execution)
+        // 2. Background scheduler triggers them at scheduled times
         if (isFirstEmission) {
           isFirstEmission = false;
-          console.log('[Dashboard] First config emission - deferring task initialization by 1 second');
+          console.log('[Dashboard] First config emission - updating task configs only (NOT auto-starting)');
 
-          // Defer startup task initialization
+          // Defer config updates to prevent UI blocking
           setTimeout(() => {
             try {
-              console.log('[Dashboard] First-time config update - starting enabled tasks');
+              console.log('[Dashboard] First-time config update - updating configs without auto-start');
 
               const updatedOrderConfig = updatedConfig.taskSchedules.placeLimitOrder;
               this.taskScheduler.updateTaskConfig('place-limit-order', updatedOrderConfig);
@@ -557,40 +559,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
               const updatedMoveSLConfig = updatedConfig.taskSchedules.moveSLToEntry;
               this.taskScheduler.updateTaskConfig('move-sl-to-entry', updatedMoveSLConfig);
 
-              // After config updates, start enabled tasks
-              setTimeout(() => {
-                try {
-                  console.log('[Dashboard] Starting enabled tasks after config update');
-
-                  if (updatedOrderConfig.enabled) {
-                    console.log('[Dashboard] Starting place-limit-order');
-                    this.taskScheduler.startTask('place-limit-order');
-                  }
-
-                  if (updatedTargetSlConfig.enabled) {
-                    console.log('[Dashboard] Starting place-target-stopLoss');
-                    this.taskScheduler.startTask('place-target-stopLoss');
-                  }
-
-                  if (updatedTrailingSlConfig.enabled) {
-                    console.log('[Dashboard] Starting update-trailing-stopLoss');
-                    this.taskScheduler.startTask('update-trailing-stopLoss');
-                  }
-
-                  if (updatedCleanupConfig.enabled) {
-                    console.log('[Dashboard] Starting cleanup-target-orders');
-                    this.taskScheduler.startTask('cleanup-target-orders');
-                  }
-
-                  if (updatedMoveSLConfig.enabled) {
-                    console.log('[Dashboard] Starting move-sl-to-entry');
-                    this.taskScheduler.startTask('move-sl-to-entry');
-                  }
-                } catch (err) {
-                  console.error('[Dashboard] Error starting tasks:', err);
-                  this.logger.error('Error starting tasks:', err);
-                }
-              }, 500); // Stagger starts by 500ms
+              console.log('[Dashboard] Task configs updated - tasks will NOT auto-start. They will execute via:');
+              console.log('  1. User clicks button (manual execution)');
+              console.log('  2. Background scheduler triggers at scheduled times');
             } catch (error) {
               console.error('[Dashboard] Error in first-time config update:', error);
               this.logger.error('Error in first-time config update:', error);

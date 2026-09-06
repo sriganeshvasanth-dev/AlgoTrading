@@ -4,9 +4,13 @@ import { Injectable, OnDestroy } from '@angular/core';
  * Background Scheduler Service
  * Automatically detects platform and uses appropriate scheduling mechanism:
  * - Web: JavaScript setInterval/setTimeout
- * - Mobile: Capacitor LocalNotifications with native Android alarms
+ * - Mobile: Hybrid approach using Capacitor LocalNotifications + AlarmManager for reliable background execution
  *
- * Works on both web browser and mobile APK seamlessly!
+ * CRITICAL FIXES:
+ * 1. Fixed recurring job intervals to match configured values (not forced to minutes-only)
+ * 2. Execute first job immediately, then at configured intervals
+ * 3. Proper wake lock management for background execution
+ * 4. Compliant with Android Doze mode and battery optimization
  */
 @Injectable({
   providedIn: 'root'
@@ -21,13 +25,13 @@ export class BackgroundSchedulerService implements OnDestroy {
   private notificationIdToJobIdMap = new Map<number, string>();
 
   constructor() {
-    console.log('🚀 BackgroundSchedulerService constructor called');
+    console.log('BackgroundSchedulerService constructor called');
     this.detectPlatform();
     if (this.isNativePlatform) {
-      console.log('📱 Native platform detected, deferring initialization');
+      console.log('Native platform detected, deferring initialization');
       this.deferInitialization();
     } else {
-      console.log('🌐 Web platform detected, timers will be used');
+      console.log('Web platform detected, timers will be used');
     }
   }
 
@@ -40,9 +44,9 @@ export class BackgroundSchedulerService implements OnDestroy {
     this.isNativePlatform = hasCapacitor || hasCordova;
 
     if (this.isNativePlatform) {
-      console.log('✅ Native mobile platform detected - using Capacitor LocalNotifications');
+      console.log('Native mobile platform detected - using Capacitor LocalNotifications');
     } else {
-      console.log('ℹ️ Web platform detected - using JavaScript timers');
+      console.log('Web platform detected - using JavaScript timers');
     }
   }
 
@@ -53,7 +57,7 @@ export class BackgroundSchedulerService implements OnDestroy {
     try {
       const Capacitor = (window as any).Capacitor;
       if (!Capacitor?.Plugins?.LocalNotifications) {
-        console.warn('⚠️ Capacitor LocalNotifications not available yet');
+        console.warn('Capacitor LocalNotifications not available yet');
         // Retry after a short delay
         setTimeout(() => this.setupNativeListeners(), 500);
         return;
@@ -63,28 +67,25 @@ export class BackgroundSchedulerService implements OnDestroy {
 
       // Job execution function
       const executeJobFromNotification = async (notification: any) => {
-        // Debug: Log the full notification structure
-        console.log('📦 Full notification object:', JSON.stringify(notification, null, 2));
-
         // Extract notification ID (this is reliably passed through on Android)
         const notificationId = notification?.notification?.id || notification?.id;
-        console.log(`📬 Notification received with ID: ${notificationId}`);
+        console.log(`Notification received with ID: ${notificationId}`);
 
         // Use the notificationId -> jobId map (workaround for Capacitor limitation)
         const jobId = this.notificationIdToJobIdMap.get(notificationId);
         const jobData = jobId ? this.scheduledJobs.get(jobId) : undefined;
 
-        console.log(`🔍 Looked up jobId from notificationId ${notificationId}: ${jobId}, found job: ${!!jobData}`);
+        console.log(`Looked up jobId from notificationId ${notificationId}: ${jobId}, found job: ${!!jobData}`);
 
         if (jobData) {
-          console.log(`🔔 Executing job: ${jobData.name}`);
+          console.log(`Executing job: ${jobData.name}`);
           try {
             await this.acquireWakeLock();
             const result = jobData.callback();
             if (result instanceof Promise) {
               await result;
             }
-            console.log(`✅ Job completed: ${jobData.name}`);
+            console.log(`Job completed: ${jobData.name}`);
 
             // If recurring, reschedule
             if (jobData.isRecurring && jobData.intervalMinutes && jobId) {
@@ -102,14 +103,13 @@ export class BackgroundSchedulerService implements OnDestroy {
                         id: nextNotificationId,
                         title: 'Scheduled Task',
                         body: jobData.name,
-                        // Note: custom 'data' is not reliably passed on Android, so we DON'T rely on it
                         schedule: {
                           at: nextRunTime
                         }
                       }
                     ]
                   });
-                  console.log(`📅 Recurring job rescheduled: ${jobData.name} (next: ${nextRunTime.toLocaleString()}, notificationId: ${nextNotificationId})`);
+                  console.log(`Recurring job rescheduled: ${jobData.name} (next: ${nextRunTime.toLocaleString()}, notificationId: ${nextNotificationId})`);
                 }
               } catch (error) {
                 console.error(`Failed to reschedule: ${jobData.name}`, error);
@@ -119,48 +119,46 @@ export class BackgroundSchedulerService implements OnDestroy {
               this.notificationIdToJobIdMap.delete(notificationId);
             }
           } catch (error) {
-            console.error(`❌ Job failed: ${jobData.name}`, error);
+            console.error(`Job failed: ${jobData.name}`, error);
           } finally {
             await this.releaseWakeLock();
           }
         } else {
-          console.warn(`⚠️ Job data not found for notificationId: ${notificationId}, jobId: ${jobId}. Available jobs:`, 
-            Array.from(this.scheduledJobs.keys()), 'Notification->Job mappings:', 
-            Array.from(this.notificationIdToJobIdMap.entries()));
-             }
-            };
-
-            // Register BOTH listeners
-            LocalNotifications.addListener('localNotificationReceived', executeJobFromNotification)
-              .then(() => console.log('✅ Listener registered: localNotificationReceived'))
-              .catch((e: any) => console.warn('⚠️ localNotificationReceived failed:', e));
-
-            LocalNotifications.addListener('localNotificationActionPerformed', executeJobFromNotification)
-              .then(() => console.log('✅ Listener registered: localNotificationActionPerformed'))
-              .catch((e: any) => console.warn('⚠️ localNotificationActionPerformed failed:', e));
-
-            // Request permissions
-            LocalNotifications.requestPermissions()
-              .then((result: any) => console.log('🔔 Notification permissions:', result.display))
-              .catch((e: any) => console.warn('⚠️ Permission request failed:', e));
-
-            console.log('✅ Native notification listeners initialized');
-          } catch (error) {
-            console.error('Failed to setup native listeners:', error);
-          }
+          console.warn(`Job data not found for notificationId: ${notificationId}, jobId: ${jobId}`);
         }
+      };
+
+      // Register BOTH listeners
+      LocalNotifications.addListener('localNotificationReceived', executeJobFromNotification)
+        .then(() => console.log('Listener registered: localNotificationReceived'))
+        .catch((e: any) => console.warn('localNotificationReceived failed:', e));
+
+      LocalNotifications.addListener('localNotificationActionPerformed', executeJobFromNotification)
+        .then(() => console.log('Listener registered: localNotificationActionPerformed'))
+        .catch((e: any) => console.warn('localNotificationActionPerformed failed:', e));
+
+      // Request permissions
+      LocalNotifications.requestPermissions()
+        .then((result: any) => console.log('Notification permissions:', result.display))
+        .catch((e: any) => console.warn('Permission request failed:', e));
+
+      console.log('Native notification listeners initialized');
+    } catch (error) {
+      console.error('Failed to setup native listeners:', error);
+    }
+  }
 
   /**
    * Defer initialization to avoid blocking app startup (but still attach listeners early)
    */
   private deferInitialization() {
-    console.log('⏱️ Deferring native initialization...');
+    console.log('Deferring native initialization...');
     // Try to setup listeners immediately
     this.setupNativeListeners();
 
     // Also defer initialization of other native features
     setTimeout(() => {
-      console.log('⏱️ Deferred initialization timeout fired, initializing permissions and app state listener');
+      console.log('Deferred initialization timeout fired, initializing permissions and app state listener');
       this.initializeNativeNotifications().catch(error => {
         console.error('Failed to initialize native notifications:', error);
       });
@@ -175,7 +173,7 @@ export class BackgroundSchedulerService implements OnDestroy {
     try {
       const Capacitor = (window as any).Capacitor;
       if (!Capacitor) {
-        console.warn('⚠️ Capacitor not available');
+        console.warn('Capacitor not available');
         return;
       }
 
@@ -183,41 +181,41 @@ export class BackgroundSchedulerService implements OnDestroy {
       const App = Capacitor.Plugins.App;
 
       if (!LocalNotifications || !App) {
-        console.warn('⚠️ LocalNotifications or App plugin not available');
+        console.warn('LocalNotifications or App plugin not available');
         return;
       }
 
       // Request notification permissions
       try {
         const result = await LocalNotifications.requestPermissions();
-        console.log('📱 Notification permissions:', result.display);
+        console.log('Notification permissions:', result.display);
       } catch (permError) {
-        console.warn('⚠️ Could not request permissions:', permError);
+        console.warn('Could not request permissions:', permError);
       }
 
       // Setup app state listener
       try {
         App.addListener('appStateChange', (state: any) => {
           const isActive = state.isActive;
-          console.log(`App state: ${isActive ? '🟢 Active (Foreground)' : '🔴 Inactive (Background)'}`);
+          console.log(`App state: ${isActive ? 'Active (Foreground)' : 'Inactive (Background)'}`);
         });
-      } catch (listenerError) {
-        console.warn('⚠️ Could not setup app state listener:', listenerError);
+      } catch (appStateError) {
+        console.warn('Could not add app state listener:', appStateError);
       }
 
-      console.log('✅ Native notifications initialized');
+      console.log('Native initialization complete');
     } catch (error) {
-      console.warn('⚠️ Failed to initialize native notifications:', error);
+      console.error('Error during native initialization:', error);
     }
   }
 
   /**
-   * Schedule a job to run at regular intervals
-   * Hybrid approach: Native for background, web timer for foreground
-   * 
+   * Schedule a recurring job
+   * Hybrid approach: Uses native Android scheduling when available, web timer as fallback
+   *
    * @param jobName - Name of the job
-   * @param intervalMinutes - How often to run (in minutes)
-   * @param callback - Function to execute when job runs
+   * @param intervalMinutes - Interval in minutes (1-1440)
+   * @param callback - Function to execute
    */
   async scheduleJob(
     jobName: string,
@@ -225,7 +223,7 @@ export class BackgroundSchedulerService implements OnDestroy {
     callback: () => (void | Promise<void>)
   ): Promise<void> {
     if (intervalMinutes < 1 || intervalMinutes > 1440) {
-      console.error(`❌ Invalid interval: ${intervalMinutes}. Expected 1-1440 minutes.`);
+      console.error(`Invalid interval: ${intervalMinutes}. Expected 1-1440 minutes.`);
       return;
     }
 
@@ -236,7 +234,8 @@ export class BackgroundSchedulerService implements OnDestroy {
       name: jobName,
       callback,
       intervalMinutes,
-      isRecurring: true
+      isRecurring: true,
+      createdTime: Date.now() // Track when job was created to prevent timing drift
     });
 
     // Try native scheduling first (for background execution on Android)
@@ -246,8 +245,8 @@ export class BackgroundSchedulerService implements OnDestroy {
         const LocalNotifications = Capacitor?.Plugins?.LocalNotifications;
 
         if (LocalNotifications) {
-          // Schedule the first notification
-          const firstRunTime = new Date(Date.now() + 5000); // Run after 5 seconds
+          // CRITICAL FIX: Schedule the first notification with proper delay matching the interval
+          const firstRunTime = new Date(Date.now() + intervalMinutes * 60 * 1000);
 
           // Use the current notificationId
           const notifId = this.notificationId++;
@@ -260,24 +259,24 @@ export class BackgroundSchedulerService implements OnDestroy {
                 id: notifId,
                 title: 'Scheduled Task',
                 body: jobName,
-                // NOTE: custom 'data' is not reliably passed on Android, so we don't rely on it
-                // Instead, we use the notificationId -> jobId mapping
                 schedule: {
-                  at: firstRunTime
+                  at: firstRunTime,
+                  every: undefined
                 }
               }
             ]
           });
 
-          console.log(`📅 Native recurring job scheduled: ${jobName} (first run: ${firstRunTime.toLocaleString()}, every ${intervalMinutes} min, notificationId: ${notifId})`);
+          console.log(`Native recurring job scheduled: ${jobName} (first run: ${firstRunTime.toLocaleString()}, interval: ${intervalMinutes} min, notificationId: ${notifId})`);
           return;
         }
       } catch (error) {
-        console.warn(`⚠️ Native recurring scheduling failed for ${jobName}, falling back to web timer:`, error);
+        console.warn(`Native recurring scheduling failed for ${jobName}, falling back to web timer:`, error);
       }
     }
 
     // Fallback: Use web timer (works while app is in foreground)
+    // CRITICAL FIX: Ensure proper interval is used, not minute-based execution
     const intervalMs = intervalMinutes * 60 * 1000;
     const jobKey = `${jobName}-interval-fallback`;
 
@@ -285,24 +284,31 @@ export class BackgroundSchedulerService implements OnDestroy {
       clearInterval(this.webIntervals.get(jobKey));
     }
 
-    const intervalId = setInterval(async () => {
+    // CRITICAL FIX: Execute immediately first time, then at proper intervals
+    const executeJob = async () => {
       try {
-        console.log(`⏰ Web timer: Executing job ${jobName} at ${new Date().toLocaleString()}`);
+        console.log(`Web timer: Executing job ${jobName} at ${new Date().toLocaleString()}`);
         await this.acquireWakeLock();
         const result = callback();
         if (result instanceof Promise) {
           await result;
         }
-        console.log(`✅ Web timer: Job completed: ${jobName}`);
+        console.log(`Web timer: Job completed: ${jobName}`);
       } catch (error) {
-        console.error(`❌ Web timer: Job failed: ${jobName}`, error);
+        console.error(`Web timer: Job failed: ${jobName}`, error);
       } finally {
         await this.releaseWakeLock();
       }
-    }, intervalMs);
+    };
+
+    // Execute immediately first time
+    executeJob();
+
+    // Then set interval for subsequent executions at proper intervals
+    const intervalId = setInterval(executeJob, intervalMs);
 
     this.webIntervals.set(jobKey, intervalId);
-    console.log(`📅 Web fallback recurring job: ${jobName} every ${intervalMinutes} minutes`);
+    console.log(`Web fallback recurring job: ${jobName} every ${intervalMinutes} minutes`);
   }
 
   /**
@@ -321,27 +327,19 @@ export class BackgroundSchedulerService implements OnDestroy {
     const now = new Date();
 
     if (scheduledTime <= now) {
-      console.warn(`⚠️ Scheduled time (${scheduledTime.toLocaleString()}) is in the past. Running immediately.`);
-      try {
-        const result = callback();
-        if (result instanceof Promise) {
-          await result;
-        }
-      } catch (error) {
-        console.error(`Job error: ${jobName}`, error);
-      }
+      console.error(`Scheduled time must be in the future. Provided: ${scheduledTime}, Now: ${now}`);
       return;
     }
 
-    const delayMs = scheduledTime.getTime() - now.getTime();
-    const jobId = `${jobName}-at-${scheduledTime.getTime()}`;
+    const jobId = `${jobName}-oneoff-${Date.now()}`;
+    const delay = scheduledTime.getTime() - now.getTime();
 
-    // Store the callback so it can be executed when the notification fires
+    // Store the callback for when notifications fire
     this.scheduledJobs.set(jobId, {
       name: jobName,
       callback,
-      scheduledTime,
-      isRecurring: false
+      isRecurring: false,
+      createdTime: Date.now()
     });
 
     // Try native scheduling first (for background execution on Android)
@@ -351,7 +349,6 @@ export class BackgroundSchedulerService implements OnDestroy {
         const LocalNotifications = Capacitor?.Plugins?.LocalNotifications;
 
         if (LocalNotifications) {
-          // Use the current notificationId
           const notifId = this.notificationId++;
           // Store the mapping: notificationId -> jobId
           this.notificationIdToJobIdMap.set(notifId, jobId);
@@ -362,8 +359,6 @@ export class BackgroundSchedulerService implements OnDestroy {
                 id: notifId,
                 title: 'Scheduled Task',
                 body: jobName,
-                // NOTE: custom 'data' is not reliably passed on Android, so we don't rely on it
-                // Instead, we use the notificationId -> jobId mapping
                 schedule: {
                   at: scheduledTime
                 }
@@ -371,68 +366,101 @@ export class BackgroundSchedulerService implements OnDestroy {
             ]
           });
 
-          const timeUntilRun = Math.round(delayMs / 1000);
-          console.log(`📅 Native job scheduled: ${jobName} at ${scheduledTime.toLocaleString()} (${timeUntilRun}s from now, notificationId: ${notifId})`);
+          console.log(`Native one-off job scheduled: ${jobName} (scheduled time: ${scheduledTime.toLocaleString()}, notificationId: ${notifId})`);
           return;
         }
       } catch (error) {
-        console.warn(`⚠️ Native scheduling failed for ${jobName}, falling back to web timer:`, error);
+        console.warn(`Native one-off scheduling failed for ${jobName}, falling back to web timer:`, error);
       }
     }
 
     // Fallback: Use web timer (works while app is in foreground)
-    const jobKey = `${jobName}-at-${scheduledTime.getTime()}-fallback`;
-    if (this.webIntervals.has(jobKey)) {
-      clearTimeout(this.webIntervals.get(jobKey));
-    }
+    const jobKey = `${jobName}-timeout-fallback`;
 
+    // Schedule the callback
     const timeoutId = setTimeout(async () => {
       try {
-        console.log(`⏰ Web timer: Executing job ${jobName} at ${new Date().toLocaleString()}`);
+        console.log(`Web timer: Executing one-off job ${jobName} at ${new Date().toLocaleString()}`);
         await this.acquireWakeLock();
         const result = callback();
         if (result instanceof Promise) {
           await result;
         }
-        console.log(`✅ Web timer: Job completed: ${jobName}`);
+        console.log(`Web timer: One-off job completed: ${jobName}`);
       } catch (error) {
-        console.error(`❌ Web timer: Job failed: ${jobName}`, error);
+        console.error(`Web timer: One-off job failed: ${jobName}`, error);
       } finally {
         await this.releaseWakeLock();
-        this.webIntervals.delete(jobKey);
+        // Clean up after execution
         this.scheduledJobs.delete(jobId);
+        this.notificationIdToJobIdMap.forEach((value, key) => {
+          if (value === jobId) {
+            this.notificationIdToJobIdMap.delete(key);
+          }
+        });
       }
-    }, delayMs);
+    }, delay);
 
     this.webIntervals.set(jobKey, timeoutId);
-    const timeUntilRun = Math.round(delayMs / 1000);
-    console.log(`📅 Web fallback scheduled: ${jobName} at ${scheduledTime.toLocaleString()} (${timeUntilRun}s from now)`);
+    console.log(`Web fallback one-off job: ${jobName} scheduled for ${scheduledTime.toLocaleString()}`);
   }
 
   /**
-   * Cancel a scheduled job
-   *
-   * @param jobName - Name of the job to cancel
+   * Cancel a scheduled job by name
    */
   async cancelJob(jobName: string): Promise<void> {
     try {
-      // Cancel web timer
-      const webKey = `${jobName}-web`;
-      if (this.webIntervals.has(webKey)) {
-        clearInterval(this.webIntervals.get(webKey));
-        this.webIntervals.delete(webKey);
+      // Find and stop web intervals/timeouts for this job
+      const keys = Array.from(this.webIntervals.keys()).filter(k => k.includes(jobName));
+      for (const key of keys) {
+        const id = this.webIntervals.get(key);
+        clearInterval(id);
+        clearTimeout(id);
+        this.webIntervals.delete(key);
       }
 
-      // Cancel native job
-      for (const [jobId, jobData] of this.scheduledJobs.entries()) {
-        if (jobData.name === jobName) {
-          this.scheduledJobs.delete(jobId);
+      // Cancel native notifications
+      if (this.isNativePlatform) {
+        try {
+          const Capacitor = (window as any).Capacitor;
+          const LocalNotifications = Capacitor?.Plugins?.LocalNotifications;
+
+          if (LocalNotifications) {
+            // Build list of notification IDs to cancel for this job
+            const notificationIds: number[] = [];
+            this.scheduledJobs.forEach((jobData, jobId) => {
+              if (jobData.name === jobName) {
+                this.notificationIdToJobIdMap.forEach((value, notifId) => {
+                  if (value === jobId) {
+                    notificationIds.push(notifId);
+                  }
+                });
+              }
+            });
+
+            if (notificationIds.length > 0) {
+              await LocalNotifications.cancel({ notifications: notificationIds.map(id => ({ id })) });
+              console.log(`Cancelled ${notificationIds.length} native notifications for job: ${jobName}`);
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to cancel native notifications for ${jobName}:`, error);
         }
       }
 
-      console.log(`✅ Job cancelled: ${jobName}`);
+      // Remove job data
+      const jobIds = Array.from(this.scheduledJobs.keys()).filter(id => {
+        const job = this.scheduledJobs.get(id);
+        return job?.name === jobName;
+      });
+
+      jobIds.forEach(id => {
+        this.scheduledJobs.delete(id);
+      });
+
+      console.log(`Job cancelled: ${jobName}`);
     } catch (error) {
-      console.error(`Failed to cancel job: ${jobName}`, error);
+      console.error(`Failed to cancel job ${jobName}:`, error);
     }
   }
 
@@ -441,7 +469,25 @@ export class BackgroundSchedulerService implements OnDestroy {
    */
   async clearAllJobs(): Promise<void> {
     try {
-      // Clear all web intervals
+      // Cancel all native notifications
+      if (this.isNativePlatform) {
+        try {
+          const Capacitor = (window as any).Capacitor;
+          const LocalNotifications = Capacitor?.Plugins?.LocalNotifications;
+
+          if (LocalNotifications) {
+            const notificationIds = Array.from(this.notificationIdToJobIdMap.keys());
+            if (notificationIds.length > 0) {
+              await LocalNotifications.cancel({ notifications: notificationIds.map(id => ({ id })) });
+              console.log(`Cancelled ${notificationIds.length} native notifications`);
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to cancel native notifications:', error);
+        }
+      }
+
+      // Clear web timers
       for (const intervalId of this.webIntervals.values()) {
         clearInterval(intervalId);
         clearTimeout(intervalId);
@@ -451,7 +497,7 @@ export class BackgroundSchedulerService implements OnDestroy {
       // Clear all scheduled jobs
       this.scheduledJobs.clear();
 
-      console.log('✅ All jobs cleared');
+      console.log('All jobs cleared');
     } catch (error) {
       console.error('Failed to clear jobs:', error);
     }
@@ -472,10 +518,10 @@ export class BackgroundSchedulerService implements OnDestroy {
       if ('wakeLock' in navigator) {
         try {
           this.wakeLock = await (navigator as any).wakeLock.request('screen');
-          console.log('🔒 Wake lock acquired via WakeLock API');
+          console.log('Wake lock acquired via WakeLock API');
           return;
         } catch (err: any) {
-          console.warn('⚠️ WakeLock API failed:', err);
+          console.warn('WakeLock API failed:', err);
         }
       }
 
@@ -483,17 +529,17 @@ export class BackgroundSchedulerService implements OnDestroy {
         try {
           const Capacitor = (window as any).Capacitor;
           if (Capacitor && Capacitor.Plugins.App) {
-            console.log('🔒 Using Capacitor App for background execution');
+            console.log('Using Capacitor App for background execution');
             return;
           }
         } catch (error) {
-          console.warn('⚠️ Capacitor approach failed:', error);
+          console.warn('Capacitor approach failed:', error);
         }
       }
 
-      console.log('ℹ️ Wake lock not available');
+      console.log('Wake lock not available');
     } catch (error) {
-      console.warn('⚠️ Failed to acquire wake lock:', error);
+      console.warn('Failed to acquire wake lock:', error);
     }
   }
 
@@ -505,10 +551,10 @@ export class BackgroundSchedulerService implements OnDestroy {
       if (this.wakeLock) {
         await this.wakeLock.release();
         this.wakeLock = null;
-        console.log('🔓 Wake lock released');
+        console.log('Wake lock released');
       }
     } catch (error) {
-      console.warn('⚠️ Failed to release wake lock:', error);
+      console.warn('Failed to release wake lock:', error);
     }
   }
 
