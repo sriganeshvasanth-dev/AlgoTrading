@@ -525,6 +525,18 @@ export class PAndLService {
         dateMap.get(date)!.push(txn);
       }
 
+      // First pass: Extract all commission transactions and group by symbol
+      const commissionBySymbol = new Map<string, number>();
+      for (const txn of transactions) {
+        if (txn.transaction_type === 'commission') {
+          const symbol = txn.meta_data?.product_symbol || txn.asset_symbol || 'UNKNOWN';
+          const amount = Math.abs(parseFloat(txn.amount || '0')); // Commission amounts are negative, take absolute value
+          commissionBySymbol.set(symbol, (commissionBySymbol.get(symbol) || 0) + amount);
+        }
+      }
+
+      this.logger.debug('[Wallet P&L] Extracted commissions by symbol:', Object.fromEntries(commissionBySymbol));
+
       // Convert to DatePnL format
       const datePnLs: DatePnL[] = [];
       for (const [date, dateTxns] of dateMap) {
@@ -586,11 +598,14 @@ export class PAndLService {
             }
           }
 
+          // Calculate fees for this symbol from commission transactions
+          const symbolFees = commissionBySymbol.get(symbol) || 0;
+
           symbols.push({
             symbol,
             pnl,
-            fees: 0,
-            netPnL: pnl,
+            fees: symbolFees,
+            netPnL: pnl - symbolFees,
             buys,
             sells,
             fillCount: txnCount.get(symbol) || 0,
@@ -599,6 +614,7 @@ export class PAndLService {
         }
 
         const totalPnL = symbols.reduce((sum, s) => sum + s.pnl, 0);
+        const totalFees = symbols.reduce((sum, s) => sum + s.fees, 0);
 
         // Get the first transaction timestamp for this date
         let createdAt: string | undefined;
@@ -610,8 +626,8 @@ export class PAndLService {
           date,
           createdAt,
           pnl: totalPnL,
-          fees: 0,
-          netPnL: totalPnL,
+          fees: totalFees,
+          netPnL: totalPnL - totalFees,
           symbols
         });
       }

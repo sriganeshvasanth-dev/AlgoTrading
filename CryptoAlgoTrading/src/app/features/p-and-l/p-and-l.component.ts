@@ -34,8 +34,8 @@ export class PAndLComponent implements OnInit, OnDestroy {
   // Data source selection - DEFAULT: Wallet transactions
   dataSource: 'fills' | 'transactions' = 'transactions'; // Toggle between fills-based and transactions-based P&L
 
-  // Transaction type filter (only for wallet transactions) - DEFAULT: cashflow only
-  selectedTransactionTypes: string[] = ['cashflow']; // Default to cashflow
+  // Transaction type filter (only for wallet transactions) - DEFAULT: cashflow and commission
+  selectedTransactionTypes: string[] = ['cashflow', 'commission']; // Default to cashflow and commission
   transactionTypeOptions = [
     { value: 'cashflow', label: 'Cashflow - Generic cash credit or debit' },
     { value: 'deposit', label: 'Deposit - Funds deposited into the wallet' },
